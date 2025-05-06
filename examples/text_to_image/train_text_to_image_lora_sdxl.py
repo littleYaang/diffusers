@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # coding=utf-8
-# Copyright 2024 The HuggingFace Inc. team. All rights reserved.
+# Copyright 2025 The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -50,7 +50,7 @@ from diffusers import (
     StableDiffusionXLPipeline,
     UNet2DConditionModel,
 )
-from diffusers.loaders import LoraLoaderMixin
+from diffusers.loaders import StableDiffusionLoraLoaderMixin
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import _set_state_dict_into_text_encoder, cast_training_params, compute_snr
 from diffusers.utils import (
@@ -68,7 +68,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.30.0.dev0")
+check_min_version("0.34.0.dev0")
 
 logger = get_logger(__name__)
 if is_torch_npu_available():
@@ -137,7 +137,7 @@ def log_validation(
     pipeline.set_progress_bar_config(disable=True)
 
     # run inference
-    generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
+    generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed is not None else None
     pipeline_args = {"prompt": args.validation_prompt}
     if torch.backends.mps.is_available():
         autocast_ctx = nullcontext()
@@ -478,7 +478,16 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--debug_loss",
         action="store_true",
-        help="debug loss for each image, if filenames are awailable in the dataset",
+        help="debug loss for each image, if filenames are available in the dataset",
+    )
+    parser.add_argument(
+        "--image_interpolation_mode",
+        type=str,
+        default="lanczos",
+        choices=[
+            f.lower() for f in dir(transforms.InterpolationMode) if not f.startswith("__") and not f.endswith("__")
+        ],
+        help="The image interpolation method to use for resizing images.",
     )
 
     if input_args is not None:
@@ -766,8 +775,8 @@ def main(args):
             else:
                 raise ValueError(f"unexpected save model: {model.__class__}")
 
-        lora_state_dict, _ = LoraLoaderMixin.lora_state_dict(input_dir)
-        unet_state_dict = {f'{k.replace("unet.", "")}': v for k, v in lora_state_dict.items() if k.startswith("unet.")}
+        lora_state_dict, _ = StableDiffusionLoraLoaderMixin.lora_state_dict(input_dir)
+        unet_state_dict = {f"{k.replace('unet.', '')}": v for k, v in lora_state_dict.items() if k.startswith("unet.")}
         unet_state_dict = convert_unet_state_dict_to_peft(unet_state_dict)
         incompatible_keys = set_peft_model_state_dict(unet_, unet_state_dict, adapter_name="default")
         if incompatible_keys is not None:
@@ -913,8 +922,14 @@ def main(args):
         tokens_two = tokenize_prompt(tokenizer_two, captions)
         return tokens_one, tokens_two
 
+    # Get the specified interpolation method from the args
+    interpolation = getattr(transforms.InterpolationMode, args.image_interpolation_mode.upper(), None)
+
+    # Raise an error if the interpolation method is invalid
+    if interpolation is None:
+        raise ValueError(f"Unsupported interpolation mode {args.image_interpolation_mode}.")
     # Preprocessing the datasets.
-    train_resize = transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR)
+    train_resize = transforms.Resize(args.resolution, interpolation=interpolation)  # Use dynamic interpolation method
     train_crop = transforms.CenterCrop(args.resolution) if args.center_crop else transforms.RandomCrop(args.resolution)
     train_flip = transforms.RandomHorizontalFlip(p=1.0)
     train_transforms = transforms.Compose(

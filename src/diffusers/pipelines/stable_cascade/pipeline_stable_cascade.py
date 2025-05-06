@@ -15,17 +15,25 @@
 from typing import Callable, Dict, List, Optional, Union
 
 import torch
-from transformers import CLIPTextModel, CLIPTokenizer
+from transformers import CLIPTextModelWithProjection, CLIPTokenizer
 
 from ...models import StableCascadeUNet
 from ...schedulers import DDPMWuerstchenScheduler
-from ...utils import is_torch_version, logging, replace_example_docstring
+from ...utils import is_torch_version, is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from ..wuerstchen.modeling_paella_vq_model import PaellaVQModel
 
 
+if is_torch_xla_available():
+    import torch_xla.core.xla_model as xm
+
+    XLA_AVAILABLE = True
+else:
+    XLA_AVAILABLE = False
+
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
 
 EXAMPLE_DOC_STRING = """
     Examples:
@@ -57,7 +65,7 @@ class StableCascadeDecoderPipeline(DiffusionPipeline):
     Args:
         tokenizer (`CLIPTokenizer`):
             The CLIP tokenizer.
-        text_encoder (`CLIPTextModel`):
+        text_encoder (`CLIPTextModelWithProjection`):
             The CLIP text encoder.
         decoder ([`StableCascadeUNet`]):
             The Stable Cascade decoder unet.
@@ -85,7 +93,7 @@ class StableCascadeDecoderPipeline(DiffusionPipeline):
         self,
         decoder: StableCascadeUNet,
         tokenizer: CLIPTokenizer,
-        text_encoder: CLIPTextModel,
+        text_encoder: CLIPTextModelWithProjection,
         scheduler: DDPMWuerstchenScheduler,
         vqgan: PaellaVQModel,
         latent_dim_scale: float = 10.67,
@@ -281,6 +289,16 @@ class StableCascadeDecoderPipeline(DiffusionPipeline):
     def num_timesteps(self):
         return self._num_timesteps
 
+    def get_timestep_ratio_conditioning(self, t, alphas_cumprod):
+        s = torch.tensor([0.008])
+        clamp_range = [0, 1]
+        min_var = torch.cos(s / (1 + s) * torch.pi * 0.5) ** 2
+        var = alphas_cumprod[t]
+        var = var.clamp(*clamp_range)
+        s, min_var = s.to(var.device), min_var.to(var.device)
+        ratio = (((var * min_var) ** 0.5).acos() / (torch.pi * 0.5)) * (1 + s) - s
+        return ratio
+
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
@@ -434,10 +452,30 @@ class StableCascadeDecoderPipeline(DiffusionPipeline):
             batch_size, image_embeddings, num_images_per_prompt, dtype, device, generator, latents, self.scheduler
         )
 
+        if isinstance(self.scheduler, DDPMWuerstchenScheduler):
+            timesteps = timesteps[:-1]
+        else:
+            if hasattr(self.scheduler.config, "clip_sample") and self.scheduler.config.clip_sample:
+                self.scheduler.config.clip_sample = False  # disample sample clipping
+                logger.warning(" set `clip_sample` to be False")
+
         # 6. Run denoising loop
-        self._num_timesteps = len(timesteps[:-1])
-        for i, t in enumerate(self.progress_bar(timesteps[:-1])):
-            timestep_ratio = t.expand(latents.size(0)).to(dtype)
+        if hasattr(self.scheduler, "betas"):
+            alphas = 1.0 - self.scheduler.betas
+            alphas_cumprod = torch.cumprod(alphas, dim=0)
+        else:
+            alphas_cumprod = []
+
+        self._num_timesteps = len(timesteps)
+        for i, t in enumerate(self.progress_bar(timesteps)):
+            if not isinstance(self.scheduler, DDPMWuerstchenScheduler):
+                if len(alphas_cumprod) > 0:
+                    timestep_ratio = self.get_timestep_ratio_conditioning(t.long().cpu(), alphas_cumprod)
+                    timestep_ratio = timestep_ratio.expand(latents.size(0)).to(dtype).to(device)
+                else:
+                    timestep_ratio = t.float().div(self.scheduler.timesteps[-1]).expand(latents.size(0)).to(dtype)
+            else:
+                timestep_ratio = t.expand(latents.size(0)).to(dtype)
 
             # 7. Denoise latents
             predicted_latents = self.decoder(
@@ -454,6 +492,8 @@ class StableCascadeDecoderPipeline(DiffusionPipeline):
                 predicted_latents = torch.lerp(predicted_latents_uncond, predicted_latents_text, self.guidance_scale)
 
             # 9. Renoise latents to next timestep
+            if not isinstance(self.scheduler, DDPMWuerstchenScheduler):
+                timestep_ratio = t
             latents = self.scheduler.step(
                 model_output=predicted_latents,
                 timestep=timestep_ratio,
@@ -471,6 +511,9 @@ class StableCascadeDecoderPipeline(DiffusionPipeline):
                 prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
                 negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
 
+            if XLA_AVAILABLE:
+                xm.mark_step()
+
         if output_type not in ["pt", "np", "pil", "latent"]:
             raise ValueError(
                 f"Only the output types `pt`, `np`, `pil` and `latent` are supported not output_type={output_type}"
@@ -481,9 +524,9 @@ class StableCascadeDecoderPipeline(DiffusionPipeline):
             latents = self.vqgan.config.scale_factor * latents
             images = self.vqgan.decode(latents).sample.clamp(0, 1)
             if output_type == "np":
-                images = images.permute(0, 2, 3, 1).cpu().float().numpy()  # float() as bfloat16-> numpy doesnt work
+                images = images.permute(0, 2, 3, 1).cpu().float().numpy()  # float() as bfloat16-> numpy doesn't work
             elif output_type == "pil":
-                images = images.permute(0, 2, 3, 1).cpu().float().numpy()  # float() as bfloat16-> numpy doesnt work
+                images = images.permute(0, 2, 3, 1).cpu().float().numpy()  # float() as bfloat16-> numpy doesn't work
                 images = self.numpy_to_pil(images)
         else:
             images = latents

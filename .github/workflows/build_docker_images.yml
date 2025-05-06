@@ -20,7 +20,8 @@ env:
 
 jobs:
   test-build-docker-images:
-    runs-on: [ self-hosted, intel-cpu, 8-cpu, ci ]
+    runs-on:
+      group: aws-general-8-plus
     if: github.event_name == 'pull_request'
     steps:
       - name: Set up Docker Buildx
@@ -33,7 +34,7 @@ jobs:
         id: file_changes
         uses: jitterbit/get-changed-files@v1
         with:
-          format: 'space-delimited'
+          format: "space-delimited"
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build Changed Docker Images
@@ -50,7 +51,8 @@ jobs:
         if: steps.file_changes.outputs.all != ''
 
   build-and-push-docker-images:
-    runs-on: [ self-hosted, intel-cpu, 8-cpu, ci ]
+    runs-on:
+      group: aws-general-8-plus
     if: github.event_name != 'pull_request'
 
     permissions:
@@ -65,6 +67,7 @@ jobs:
           - diffusers-pytorch-cuda
           - diffusers-pytorch-compile-cuda
           - diffusers-pytorch-xformers-cuda
+          - diffusers-pytorch-minimum-cuda
           - diffusers-flax-cpu
           - diffusers-flax-tpu
           - diffusers-onnxruntime-cpu

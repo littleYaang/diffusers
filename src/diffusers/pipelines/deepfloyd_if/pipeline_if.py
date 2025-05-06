@@ -7,13 +7,14 @@ from typing import Any, Callable, Dict, List, Optional, Union
 import torch
 from transformers import CLIPImageProcessor, T5EncoderModel, T5Tokenizer
 
-from ...loaders import LoraLoaderMixin
+from ...loaders import StableDiffusionLoraLoaderMixin
 from ...models import UNet2DConditionModel
 from ...schedulers import DDPMScheduler
 from ...utils import (
     BACKENDS_MAPPING,
     is_bs4_available,
     is_ftfy_available,
+    is_torch_xla_available,
     logging,
     replace_example_docstring,
 )
@@ -24,7 +25,15 @@ from .safety_checker import IFSafetyChecker
 from .watermark import IFWatermarker
 
 
+if is_torch_xla_available():
+    import torch_xla.core.xla_model as xm
+
+    XLA_AVAILABLE = True
+else:
+    XLA_AVAILABLE = False
+
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
 
 if is_bs4_available():
     from bs4 import BeautifulSoup
@@ -84,7 +93,7 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-class IFPipeline(DiffusionPipeline, LoraLoaderMixin):
+class IFPipeline(DiffusionPipeline, StableDiffusionLoraLoaderMixin):
     tokenizer: T5Tokenizer
     text_encoder: T5EncoderModel
 
@@ -475,7 +484,7 @@ class IFPipeline(DiffusionPipeline, LoraLoaderMixin):
         # &amp
         caption = re.sub(r"&amp", "", caption)
 
-        # ip adresses:
+        # ip addresses:
         caption = re.sub(r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}", " ", caption)
 
         # article ids:
@@ -734,6 +743,9 @@ class IFPipeline(DiffusionPipeline, LoraLoaderMixin):
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, intermediate_images)
+
+                if XLA_AVAILABLE:
+                    xm.mark_step()
 
         image = intermediate_images
 

@@ -67,6 +67,17 @@ write_basic_config()
 When running `accelerate config`, if we specify torch compile mode to True there can be dramatic speedups.
 Note also that we use PEFT library as backend for LoRA training, make sure to have `peft>=0.6.0` installed in your environment.
 
+Lastly, we recommend logging into your HF account so that your trained LoRA is automatically uploaded to the hub:
+```bash
+huggingface-cli login
+```
+This command will prompt you for a token. Copy-paste yours from your [settings/tokens](https://huggingface.co/settings/tokens),and press Enter.
+
+> [!NOTE]
+> In the examples below we use `wandb` to document the training runs. To do the same, make sure to install `wandb`:
+> `pip install wandb`
+> Alternatively, you can use other tools / train without reporting by modifying the flag  `--report_to="wandb"`.
+
 ### Pivotal Tuning
 **Training with text encoder(s)**
 
@@ -114,7 +125,7 @@ Now we'll simply specify the name of the dataset and caption column (in this cas
 ```
 
 You can also load a dataset straight from by specifying it's name in `dataset_name`.
-Look [here](https://huggingface.co/blog/sdxl_lora_advanced_script#custom-captioning) for more info on creating/loadin your own caption dataset.
+Look [here](https://huggingface.co/blog/sdxl_lora_advanced_script#custom-captioning) for more info on creating/loading your own caption dataset.
 
 - **optimizer**: for this example, we'll use [prodigy](https://huggingface.co/blog/sdxl_lora_advanced_script#adaptive-optimizers) - an adaptive optimizer
 - **pivotal tuning**
@@ -393,7 +404,7 @@ The advanced script now supports custom choice of U-net blocks to train during D
 > In light of this, we're introducing a new feature to the advanced script to allow for configurable U-net learned blocks.
 
 **Usage**
-Configure LoRA learned U-net blocks adding a `lora_unet_blocks` flag, with a comma seperated string specifying the targeted blocks.
+Configure LoRA learned U-net blocks adding a `lora_unet_blocks` flag, with a comma separated string specifying the targeted blocks.
 e.g:
 ```bash
 --lora_unet_blocks="unet.up_blocks.0.attentions.0,unet.up_blocks.0.attentions.1"

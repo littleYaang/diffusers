@@ -20,6 +20,7 @@ from transformers import CLIPTokenizer
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import PNDMScheduler
 from ...utils import (
+    is_torch_xla_available,
     logging,
     replace_example_docstring,
 )
@@ -30,7 +31,15 @@ from .modeling_blip2 import Blip2QFormerModel
 from .modeling_ctx_clip import ContextCLIPTextModel
 
 
+if is_torch_xla_available():
+    import torch_xla.core.xla_model as xm
+
+    XLA_AVAILABLE = True
+else:
+    XLA_AVAILABLE = False
+
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
 
 EXAMPLE_DOC_STRING = """
     Examples:
@@ -129,7 +138,7 @@ class BlipDiffusionPipeline(DiffusionPipeline):
     def get_query_embeddings(self, input_image, src_subject):
         return self.qformer(image_input=input_image, text_input=src_subject, return_dict=False)
 
-    # from the original Blip Diffusion code, speciefies the target subject and augments the prompt by repeating it
+    # from the original Blip Diffusion code, specifies the target subject and augments the prompt by repeating it
     def _build_prompt(self, prompts, tgt_subjects, prompt_strength=1.0, prompt_reps=20):
         rv = []
         for prompt, tgt_subject in zip(prompts, tgt_subjects):
@@ -335,6 +344,9 @@ class BlipDiffusionPipeline(DiffusionPipeline):
                 t,
                 latents,
             )["prev_sample"]
+
+            if XLA_AVAILABLE:
+                xm.mark_step()
 
         image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
         image = self.image_processor.postprocess(image, output_type=output_type)

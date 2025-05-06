@@ -20,18 +20,14 @@ import numpy as np
 import torch
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
-from diffusers import (
-    AutoencoderKL,
-    DDIMScheduler,
-    TextToVideoSDPipeline,
-    UNet3DConditionModel,
-)
+from diffusers import AutoencoderKL, DDIMScheduler, TextToVideoSDPipeline, UNet3DConditionModel
 from diffusers.utils import is_xformers_available
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     enable_full_determinism,
     load_numpy,
     numpy_cosine_similarity_distance,
-    require_torch_gpu,
+    require_torch_accelerator,
     skip_mps,
     slow,
     torch_device,
@@ -64,7 +60,7 @@ class TextToVideoSDPipelineFastTests(PipelineTesterMixin, SDFunctionTesterMixin,
     def get_dummy_components(self):
         torch.manual_seed(0)
         unet = UNet3DConditionModel(
-            block_out_channels=(4, 8),
+            block_out_channels=(8, 8),
             layers_per_block=1,
             sample_size=32,
             in_channels=4,
@@ -134,10 +130,7 @@ class TextToVideoSDPipelineFastTests(PipelineTesterMixin, SDFunctionTesterMixin,
         return inputs
 
     def test_dict_tuple_outputs_equivalent(self):
-        expected_slice = None
-        if torch_device == "cpu":
-            expected_slice = np.array([0.4903, 0.5649, 0.5504, 0.5179, 0.4821, 0.5466, 0.4131, 0.5052, 0.5077])
-        return super().test_dict_tuple_outputs_equivalent(expected_slice=expected_slice)
+        return super().test_dict_tuple_outputs_equivalent()
 
     def test_text_to_video_default_case(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
@@ -151,9 +144,8 @@ class TextToVideoSDPipelineFastTests(PipelineTesterMixin, SDFunctionTesterMixin,
         frames = sd_pipe(**inputs).frames
 
         image_slice = frames[0][0][-3:, -3:, -1]
-
         assert frames[0][0].shape == (32, 32, 3)
-        expected_slice = np.array([0.7537, 0.1752, 0.6157, 0.5508, 0.4240, 0.4110, 0.4838, 0.5648, 0.5094])
+        expected_slice = np.array([0.8093, 0.2751, 0.6976, 0.5927, 0.4616, 0.4336, 0.5094, 0.5683, 0.4796])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -182,25 +174,30 @@ class TextToVideoSDPipelineFastTests(PipelineTesterMixin, SDFunctionTesterMixin,
     def test_num_images_per_prompt(self):
         pass
 
-    def test_progress_bar(self):
-        return super().test_progress_bar()
+    def test_encode_prompt_works_in_isolation(self):
+        extra_required_param_value_dict = {
+            "device": torch.device(torch_device).type,
+            "num_images_per_prompt": 1,
+            "do_classifier_free_guidance": self.get_dummy_inputs(device=torch_device).get("guidance_scale", 1.0) > 1.0,
+        }
+        return super().test_encode_prompt_works_in_isolation(extra_required_param_value_dict)
 
 
 @slow
 @skip_mps
-@require_torch_gpu
+@require_torch_accelerator
 class TextToVideoSDPipelineSlowTests(unittest.TestCase):
     def setUp(self):
         # clean up the VRAM before each test
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def test_two_step_model(self):
         expected_video = load_numpy(

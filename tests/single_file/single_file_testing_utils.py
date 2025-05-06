@@ -5,6 +5,7 @@ import requests
 import torch
 from huggingface_hub import hf_hub_download, snapshot_download
 
+from diffusers.loaders.single_file_utils import _extract_repo_id_and_weights_name
 from diffusers.models.attention_processor import AttnProcessor
 from diffusers.utils.testing_utils import (
     numpy_cosine_similarity_distance,
@@ -46,6 +47,8 @@ def download_diffusers_config(repo_id, tmpdir):
 
 
 class SDSingleFileTesterMixin:
+    single_file_kwargs = {}
+
     def _compare_component_configs(self, pipe, single_file_pipe):
         for param_name, param_value in single_file_pipe.text_encoder.config.to_dict().items():
             if param_name in ["torch_dtype", "architectures", "_name_or_path"]:
@@ -69,9 +72,9 @@ class SDSingleFileTesterMixin:
                 continue
 
             assert component_name in pipe.components, f"single file {component_name} not found in pretrained pipeline"
-            assert isinstance(
-                component, pipe.components[component_name].__class__
-            ), f"single file {component.__class__.__name__} and pretrained {pipe.components[component_name].__class__.__name__} are not the same"
+            assert isinstance(component, pipe.components[component_name].__class__), (
+                f"single file {component.__class__.__name__} and pretrained {pipe.components[component_name].__class__.__name__} are not the same"
+            )
 
             for param_name, param_value in component.config.items():
                 if param_name in PARAMS_TO_IGNORE:
@@ -82,9 +85,9 @@ class SDSingleFileTesterMixin:
                 if param_name == "upcast_attention" and pipe.components[component_name].config[param_name] is None:
                     pipe.components[component_name].config[param_name] = param_value
 
-                assert (
-                    pipe.components[component_name].config[param_name] == param_value
-                ), f"single file {param_name}: {param_value} differs from pretrained {pipe.components[component_name].config[param_name]}"
+                assert pipe.components[component_name].config[param_name] == param_value, (
+                    f"single file {param_name}: {param_value} differs from pretrained {pipe.components[component_name].config[param_name]}"
+                )
 
     def test_single_file_components(self, pipe=None, single_file_pipe=None):
         single_file_pipe = single_file_pipe or self.pipeline_class.from_single_file(
@@ -98,8 +101,8 @@ class SDSingleFileTesterMixin:
         pipe = pipe or self.pipeline_class.from_pretrained(self.repo_id, safety_checker=None)
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            ckpt_filename = self.ckpt_path.split("/")[-1]
-            local_ckpt_path = download_single_file_checkpoint(self.repo_id, ckpt_filename, tmpdir)
+            repo_id, weight_name = _extract_repo_id_and_weights_name(self.ckpt_path)
+            local_ckpt_path = download_single_file_checkpoint(repo_id, weight_name, tmpdir)
 
             single_file_pipe = single_file_pipe or self.pipeline_class.from_single_file(
                 local_ckpt_path, safety_checker=None, local_files_only=True
@@ -138,8 +141,8 @@ class SDSingleFileTesterMixin:
         upcast_attention = pipe.unet.config.upcast_attention
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            ckpt_filename = self.ckpt_path.split("/")[-1]
-            local_ckpt_path = download_single_file_checkpoint(self.repo_id, ckpt_filename, tmpdir)
+            repo_id, weight_name = _extract_repo_id_and_weights_name(self.ckpt_path)
+            local_ckpt_path = download_single_file_checkpoint(repo_id, weight_name, tmpdir)
             local_original_config = download_original_config(self.original_config, tmpdir)
 
             single_file_pipe = single_file_pipe or self.pipeline_class.from_single_file(
@@ -153,23 +156,23 @@ class SDSingleFileTesterMixin:
         self._compare_component_configs(pipe, single_file_pipe)
 
     def test_single_file_format_inference_is_same_as_pretrained(self, expected_max_diff=1e-4):
-        sf_pipe = self.pipeline_class.from_single_file(self.ckpt_path, safety_checker=None)
+        sf_pipe = self.pipeline_class.from_single_file(self.ckpt_path, safety_checker=None, **self.single_file_kwargs)
         sf_pipe.unet.set_attn_processor(AttnProcessor())
-        sf_pipe.enable_model_cpu_offload()
+        sf_pipe.enable_model_cpu_offload(device=torch_device)
 
         inputs = self.get_inputs(torch_device)
         image_single_file = sf_pipe(**inputs).images[0]
 
         pipe = self.pipeline_class.from_pretrained(self.repo_id, safety_checker=None)
         pipe.unet.set_attn_processor(AttnProcessor())
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
 
         inputs = self.get_inputs(torch_device)
         image = pipe(**inputs).images[0]
 
         max_diff = numpy_cosine_similarity_distance(image.flatten(), image_single_file.flatten())
 
-        assert max_diff < expected_max_diff
+        assert max_diff < expected_max_diff, f"{image.flatten()} != {image_single_file.flatten()}"
 
     def test_single_file_components_with_diffusers_config(
         self,
@@ -191,8 +194,8 @@ class SDSingleFileTesterMixin:
         pipe = pipe or self.pipeline_class.from_pretrained(self.repo_id, safety_checker=None)
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            ckpt_filename = self.ckpt_path.split("/")[-1]
-            local_ckpt_path = download_single_file_checkpoint(self.repo_id, ckpt_filename, tmpdir)
+            repo_id, weight_name = _extract_repo_id_and_weights_name(self.ckpt_path)
+            local_ckpt_path = download_single_file_checkpoint(repo_id, weight_name, tmpdir)
             local_diffusers_config = download_diffusers_config(self.repo_id, tmpdir)
 
             single_file_pipe = single_file_pipe or self.pipeline_class.from_single_file(
@@ -250,9 +253,9 @@ class SDXLSingleFileTesterMixin:
                 continue
 
             assert component_name in pipe.components, f"single file {component_name} not found in pretrained pipeline"
-            assert isinstance(
-                component, pipe.components[component_name].__class__
-            ), f"single file {component.__class__.__name__} and pretrained {pipe.components[component_name].__class__.__name__} are not the same"
+            assert isinstance(component, pipe.components[component_name].__class__), (
+                f"single file {component.__class__.__name__} and pretrained {pipe.components[component_name].__class__.__name__} are not the same"
+            )
 
             for param_name, param_value in component.config.items():
                 if param_name in PARAMS_TO_IGNORE:
@@ -263,9 +266,9 @@ class SDXLSingleFileTesterMixin:
                 if param_name == "upcast_attention" and pipe.components[component_name].config[param_name] is None:
                     pipe.components[component_name].config[param_name] = param_value
 
-                assert (
-                    pipe.components[component_name].config[param_name] == param_value
-                ), f"single file {param_name}: {param_value} differs from pretrained {pipe.components[component_name].config[param_name]}"
+                assert pipe.components[component_name].config[param_name] == param_value, (
+                    f"single file {param_name}: {param_value} differs from pretrained {pipe.components[component_name].config[param_name]}"
+                )
 
     def test_single_file_components(self, pipe=None, single_file_pipe=None):
         single_file_pipe = single_file_pipe or self.pipeline_class.from_single_file(
@@ -286,8 +289,8 @@ class SDXLSingleFileTesterMixin:
         pipe = pipe or self.pipeline_class.from_pretrained(self.repo_id, safety_checker=None)
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            ckpt_filename = self.ckpt_path.split("/")[-1]
-            local_ckpt_path = download_single_file_checkpoint(self.repo_id, ckpt_filename, tmpdir)
+            repo_id, weight_name = _extract_repo_id_and_weights_name(self.ckpt_path)
+            local_ckpt_path = download_single_file_checkpoint(repo_id, weight_name, tmpdir)
 
             single_file_pipe = single_file_pipe or self.pipeline_class.from_single_file(
                 local_ckpt_path, safety_checker=None, local_files_only=True
@@ -327,8 +330,8 @@ class SDXLSingleFileTesterMixin:
         upcast_attention = pipe.unet.config.upcast_attention
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            ckpt_filename = self.ckpt_path.split("/")[-1]
-            local_ckpt_path = download_single_file_checkpoint(self.repo_id, ckpt_filename, tmpdir)
+            repo_id, weight_name = _extract_repo_id_and_weights_name(self.ckpt_path)
+            local_ckpt_path = download_single_file_checkpoint(repo_id, weight_name, tmpdir)
             local_original_config = download_original_config(self.original_config, tmpdir)
 
             single_file_pipe = single_file_pipe or self.pipeline_class.from_single_file(
@@ -364,8 +367,8 @@ class SDXLSingleFileTesterMixin:
         pipe = pipe or self.pipeline_class.from_pretrained(self.repo_id, safety_checker=None)
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            ckpt_filename = self.ckpt_path.split("/")[-1]
-            local_ckpt_path = download_single_file_checkpoint(self.repo_id, ckpt_filename, tmpdir)
+            repo_id, weight_name = _extract_repo_id_and_weights_name(self.ckpt_path)
+            local_ckpt_path = download_single_file_checkpoint(repo_id, weight_name, tmpdir)
             local_diffusers_config = download_diffusers_config(self.repo_id, tmpdir)
 
             single_file_pipe = single_file_pipe or self.pipeline_class.from_single_file(
@@ -377,14 +380,14 @@ class SDXLSingleFileTesterMixin:
     def test_single_file_format_inference_is_same_as_pretrained(self, expected_max_diff=1e-4):
         sf_pipe = self.pipeline_class.from_single_file(self.ckpt_path, torch_dtype=torch.float16, safety_checker=None)
         sf_pipe.unet.set_default_attn_processor()
-        sf_pipe.enable_model_cpu_offload()
+        sf_pipe.enable_model_cpu_offload(device=torch_device)
 
         inputs = self.get_inputs(torch_device)
         image_single_file = sf_pipe(**inputs).images[0]
 
         pipe = self.pipeline_class.from_pretrained(self.repo_id, torch_dtype=torch.float16, safety_checker=None)
         pipe.unet.set_default_attn_processor()
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
 
         inputs = self.get_inputs(torch_device)
         image = pipe(**inputs).images[0]

@@ -69,7 +69,7 @@ class LatentConsistencyModelImg2ImgPipeline(DiffusionPipeline):
             safety_checker=safety_checker,
             feature_extractor=feature_extractor,
         )
-        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1) if getattr(self, "vae", None) else 8
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
     def _encode_prompt(
@@ -647,7 +647,7 @@ class LCMSchedulerWithTimestamp(SchedulerMixin, ConfigMixin):
         return sample
 
     def set_timesteps(
-        self, stength, num_inference_steps: int, lcm_origin_steps: int, device: Union[str, torch.device] = None
+        self, strength, num_inference_steps: int, lcm_origin_steps: int, device: Union[str, torch.device] = None
     ):
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
@@ -668,7 +668,7 @@ class LCMSchedulerWithTimestamp(SchedulerMixin, ConfigMixin):
         # LCM Timesteps Setting:  # Linear Spacing
         c = self.config.num_train_timesteps // lcm_origin_steps
         lcm_origin_timesteps = (
-            np.asarray(list(range(1, int(lcm_origin_steps * stength) + 1))) * c - 1
+            np.asarray(list(range(1, int(lcm_origin_steps * strength) + 1))) * c - 1
         )  # LCM Training  Steps Schedule
         skipping_step = len(lcm_origin_timesteps) // num_inference_steps
         timesteps = lcm_origin_timesteps[::-skipping_step][:num_inference_steps]  # LCM Inference Steps Schedule

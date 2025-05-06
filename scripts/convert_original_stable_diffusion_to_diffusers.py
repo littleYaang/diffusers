@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 The HuggingFace Inc. team.
+# Copyright 2025 The HuggingFace Inc. team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -67,7 +67,7 @@ if __name__ == "__main__":
         default=None,
         type=int,
         help=(
-            "The image size that the model was trained on. Use 512 for Stable Diffusion v1.X and Stable Siffusion v2"
+            "The image size that the model was trained on. Use 512 for Stable Diffusion v1.X and Stable Diffusion v2"
             " Base. Use 768 for Stable Diffusion v2."
         ),
     )
