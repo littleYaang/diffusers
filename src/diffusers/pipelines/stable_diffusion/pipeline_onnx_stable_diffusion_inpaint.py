@@ -408,7 +408,13 @@ class OnnxStableDiffusionInpaintPipeline(DiffusionPipeline):
 
         # check inputs. Raise error if not correct
         self.check_inputs(
-            prompt, height, width, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds
+            prompt, 
+            height, 
+            width, 
+            callback_steps, 
+            negative_prompt,
+            prompt_embeds, 
+            negative_prompt_embeds
         )
 
         # define call parameters
