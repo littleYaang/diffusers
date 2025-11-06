@@ -1,0 +1,1 @@
+python gene_.py --blob_dir /mnt/hero_blob --input_dir /mnt/hero_blob/DATASET/cavas_text_removal/test_0716_eval1000_original/0717_testbenchmark
