@@ -1,31 +1,10 @@
-# diffusers for qwen
-# 1106
-Testset:
-|Name|NUM|PATH|
-|--|--|--|
-|SCUT-Ens|874|`/home/v-qinhyang/code/hero_blob/DATASET/SynthText/SCUT-EnsText_test`|
-|SCUT-Syn|800|`/home/v-qinhyang/code/hero_blob/DATASET/SynthText/Syn-Text/syn_test`|
-|Ours|1066|`/home/v-qinhyang/code/hero_blob/DATASET/SynthText/AnyTE_bench/AnyTE-all`|
+#!/bin/bash
+
+# 创建日志目录
+mkdir -p /mnt/hero_blob/TESTRESULTS/qwen_baselines/logs/eval_qwenimage_1105
+LOGDIR=/mnt/hero_blob/TESTRESULTS/qwen_baselines/logs/eval_qwenimage_1105
 
 
-## env:
-```
-image: diffusers/diffusers-pytorch-xformers-cuda:latest
-- sudo add-apt-repository universe
-- sudo apt-get update
-- y
-- lscpu | egrep '^(Socket|Core|Thread)'
-- pip install --upgrade pip
-- pip install -r examples/dreambooth/requirements_sana.txt
-- pip install -e .
-```
-
-## command:
-```
-bash sh/eval/1105/cluster_a100_8.sh
-```
-
-一共共8个eval:
 nohup bash sh/eval/1105/eval_ipnomask_scut2749_qweneditplus.sh > $LOGDIR/eval_ipnomask_scut2749_qweneditplus.log 2>&1 &
 
 
