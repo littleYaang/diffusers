@@ -26,19 +26,19 @@ for cluster_id in $(seq 0 $((total_clusters-1))); do
 #!/bin/bash
 
 # 创建日志目录
-mkdir -p /mnt/hero_blob/text_erase_lei/logs/eval_0729
+mkdir -p /mnt/hero_blob/text_erase_lei/logs/eval_1109
 
 idx=$(($1*4))
-nohup bash sh/eval/0729_cluster_eardiff/batch_scripts/run_$(printf "%03d" $idx)_*.sh > /mnt/hero_blob/text_erase_lei/logs/eval_0729/${idx}.log 2>&1 &
+nohup bash sh/eval/0729_cluster_eardiff/batch_scripts/run_$(printf "%03d" $idx)_*.sh > /mnt/hero_blob/text_erase_lei/logs/eval_1109/${idx}.log 2>&1 &
 
 idx=$(($1*4+1))
-nohup bash sh/eval/0729_cluster_eardiff/batch_scripts/run_$(printf "%03d" $idx)_*.sh > /mnt/hero_blob/text_erase_lei/logs/eval_0729/${idx}.log 2>&1 &
+nohup bash sh/eval/0729_cluster_eardiff/batch_scripts/run_$(printf "%03d" $idx)_*.sh > /mnt/hero_blob/text_erase_lei/logs/eval_1109/${idx}.log 2>&1 &
 
 idx=$(($1*4+2))
-nohup bash sh/eval/0729_cluster_eardiff/batch_scripts/run_$(printf "%03d" $idx)_*.sh > /mnt/hero_blob/text_erase_lei/logs/eval_0729/${idx}.log 2>&1 &
+nohup bash sh/eval/0729_cluster_eardiff/batch_scripts/run_$(printf "%03d" $idx)_*.sh > /mnt/hero_blob/text_erase_lei/logs/eval_1109/${idx}.log 2>&1 &
 
 idx=$(($1*4+3))
-nohup bash sh/eval/0729_cluster_eardiff/batch_scripts/run_$(printf "%03d" $idx)_*.sh > /mnt/hero_blob/text_erase_lei/logs/eval_0729/${idx}.log 2>&1 &
+nohup bash sh/eval/0729_cluster_eardiff/batch_scripts/run_$(printf "%03d" $idx)_*.sh > /mnt/hero_blob/text_erase_lei/logs/eval_1109/${idx}.log 2>&1 &
 
 wait
 echo "Cluster $1 completed"
@@ -51,3 +51,20 @@ done
 echo ""
 echo "Generated $total_clusters cluster scripts"
 echo "Usage: ./cluster_scripts/cluster_0.sh 0"
+
+#!/bin/bash
+
+# 创建日志目录
+mkdir -p /mnt/hero_blob/text_erase_lei/logs/eval_1109
+
+idx=$(($1*4))
+nohup bash generated_scripts/eval_${idx}_laion.sh > /mnt/hero_blob/text_erase_lei/logs/eval_1109/${idx}.log 2>&1 &
+
+idx=$(($1*4+1))
+nohup bash generated_scripts/eval_001_prim.sh > /mnt/hero_blob/text_erase_lei/logs/eval_1109/${idx}.log 2>&1 &
+
+idx=$(($1*4+2))
+nohup bash generated_scripts/eval_001_scut.sh > /mnt/hero_blob/text_erase_lei/logs/eval_1109/${idx}.log 2>&1 &
+
+idx=$(($1*4+3))
+nohup bash generated_scripts/eval_001_syn.sh > /mnt/hero_blob/text_erase_lei/logs/eval_1109/${idx}.log 2>&1 &
