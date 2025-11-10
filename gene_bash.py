@@ -35,8 +35,10 @@ output_base = "/mnt/hero_blob/TESTRESULTS/qwen_baselines"
 os.makedirs("generated_scripts", exist_ok=True)
 
 # 生成20个脚本
-for model_id in range(1, 6):  # 001-005
-    model_num = f"{model_id:03d}"
+# for model_id in range(1, 6):  # 001-005
+for model_id in range(1):
+    # model_num = f"{model_id:03d}"
+    model_num = f"baseline"
     lora_path = lora_template.format(model_id)
     
     for dataset_key, dataset_info in datasets.items():
@@ -65,7 +67,6 @@ python inference_qwen_image_edit_our.py \\
     --model_path {model_path} \\
     --input_dir {input_dir} \\
     --output_dir {output_dir} \\
-    --lora_path {lora_path} \\
     --num_inference_steps 50 \\
     --guidance_scale 5.0
 

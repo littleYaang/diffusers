@@ -221,7 +221,7 @@ def load_models(pretrained_model_name_or_path="/home/v-qinhyang/code/hero_blob/p
         if "2509" in pretrained_model_name_or_path:
             pipe = QwenImageEditPlusPipeline.from_pretrained(pretrained_model_name_or_path, torch_dtype=torch.bfloat16)
             print("QwenImageEditPlusPipeline Models loaded successfully!")
-        if "Edit" in pretrained_model_name_or_path:
+        elif "Edit" in pretrained_model_name_or_path:
             pipe = QwenImageEditPipeline.from_pretrained(pretrained_model_name_or_path, torch_dtype=torch.bfloat16)
             print("QwenImageEditPipeline Models loaded successfully!")
         else:
@@ -397,7 +397,7 @@ def _process_single_image(args, pipe, filename, true_cfg_scale,num_inference_ste
                 num_images_per_prompt=1,
                 max_sequence_length=512,
             )        
-    do_true_cfg = true_cfg_scale > 1
+    do_true_cfg = true_cfg_scale[0] > 1
     if do_true_cfg:
         negative_prompt_embeds, negative_prompt_embeds_mask = pipe.encode_prompt(
             image=cond_images,
@@ -425,7 +425,7 @@ def _process_single_image(args, pipe, filename, true_cfg_scale,num_inference_ste
     vae_image_sizes = []
     vae_images = []
     if "001" in args.model_name or "004" in args.model_name or "005" in args.model_name:
-        for pil in (masked_image, mask_image.convert("RGB")):
+        for pil in [masked_image, mask_image.convert("RGB")]:
             image_width, image_height = pil.size
             vae_width, vae_height = calculate_dimensions(VAE_IMAGE_AREA, image_width / image_height)
             vae_image_sizes.append((vae_width, vae_height))
@@ -436,7 +436,7 @@ def _process_single_image(args, pipe, filename, true_cfg_scale,num_inference_ste
         #     )
 
     elif "002" in args.model_name:
-        for pil in (masked_image):
+        for pil in [masked_image]:
             image_width, image_height = pil.size
             vae_width, vae_height = calculate_dimensions(VAE_IMAGE_AREA, image_width / image_height)
             vae_image_sizes.append((vae_width, vae_height))
@@ -446,7 +446,7 @@ def _process_single_image(args, pipe, filename, true_cfg_scale,num_inference_ste
             # )
 
     elif "003" in args.model_name:
-        for pil in (input_image, mask_image.convert("RGB")):
+        for pil in [input_image, mask_image.convert("RGB")]:
             image_width, image_height = pil.size
             vae_width, vae_height = calculate_dimensions(VAE_IMAGE_AREA, image_width / image_height)
             vae_image_sizes.append((vae_width, vae_height))
@@ -456,7 +456,8 @@ def _process_single_image(args, pipe, filename, true_cfg_scale,num_inference_ste
             # )
     
     else:
-        for pil in (input_image):
+        for pil in [input_image]:
+            print(pil)
             image_width, image_height = pil.size
             vae_width, vae_height = calculate_dimensions(VAE_IMAGE_AREA, image_width / image_height)
             vae_image_sizes.append((vae_width, vae_height))
@@ -467,6 +468,8 @@ def _process_single_image(args, pipe, filename, true_cfg_scale,num_inference_ste
 
     # 4. Prepare latent variables
     num_channels_latents = pipe.transformer.config.in_channels // 4
+    
+
     latents, image_latents = pipe.prepare_latents(
         vae_images,
         batch_size ,
@@ -520,9 +523,9 @@ def _process_single_image(args, pipe, filename, true_cfg_scale,num_inference_ste
     elif not pipe.transformer.config.guidance_embeds and guidance_scale is None:
         guidance = None
 
-    if pipe.attention_kwargs is None:
-        pipe._attention_kwargs = {}
-
+    
+    pipe._attention_kwargs = {}
+    prompt_embeds_mask = negative_prompt_embeds_mask = None
     txt_seq_lens = prompt_embeds_mask.sum(dim=1).tolist() if prompt_embeds_mask is not None else None
     negative_txt_seq_lens = (
         negative_prompt_embeds_mask.sum(dim=1).tolist() if negative_prompt_embeds_mask is not None else None
@@ -972,30 +975,28 @@ def run_test(args, model_name, pipe: QwenImageEditPlusPipeline, device):
     }
         
     for i, filename in enumerate(todolist):
-        try:
-            result = _process_single_image(
-                args, pipe, filename, guidance_scale, num_inference_steps, output_dir, device
-            )
-          
-            if result is not None:
-                metrics["psnr"].append(result["psnr"])
-                metrics["mssim"].append(result["mssim"])
-                metrics["mse"].append(result["mse"])
-                metrics["age"].append(result["age"])
-                metrics["peps"].append(result["peps"])
-                metrics["pceps"].append(result["pceps"])
-                metrics["individual"].append(result)
+        
+        result = _process_single_image(
+            args, pipe, filename, guidance_scale, num_inference_steps, output_dir, device
+        )
+        
+        if result is not None:
+            metrics["psnr"].append(result["psnr"])
+            metrics["mssim"].append(result["mssim"])
+            metrics["mse"].append(result["mse"])
+            metrics["age"].append(result["age"])
+            metrics["peps"].append(result["peps"])
+            metrics["pceps"].append(result["pceps"])
+            metrics["individual"].append(result)
 
-            # 每400张图像保存一次中间结果
-            if (i + 1) % 400 == 0:
-                _save_intermediate_results(
-                    output_dir, metrics, model_name,
-                    guidance_scale, i + 1, len(todolist)
-                )
+        # 每400张图像保存一次中间结果
+        if (i + 1) % 400 == 0:
+            _save_intermediate_results(
+                output_dir, metrics, model_name,
+                guidance_scale, i + 1, len(todolist)
+            )
                 
-        except Exception as e:
-            print(f"Error processing {filename}: {e}")
-            continue
+
     
     # 保存最终结果
     _save_final_results(
