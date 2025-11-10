@@ -3,7 +3,7 @@
 export CUDA_VISIBLE_DEVICES=3
 echo "Starting evaluation for model baseline on prim with guidance_scale=5.0"
 echo "Model: /mnt/hero_blob/preweight/Qwen/Qwen/Qwen-Image-Edit-2509"
-echo "LoRA: /home/v-qinhyang/code/hero_blob/qwenoutput/plain_lora/edit_plus_ablation_ens_syn_000_lora_128d_5e-5_16ep-000004.safetensors"
+echo "LoRA: /home/v-qinhyang/code/hero_blob/qwenoutput/plain_lora/edit_plus_ablation_ens_syn_005_lora_128d_5e-5_16ep-000006.safetensors"
 echo "Input: /mnt/hero_blob/DATASET/SynthText/PrismLayersPro/paired_data/all_text"
 echo "Output: /mnt/hero_blob/TESTRESULTS/qwen_baselines/Qwen-Image-Edit2509_ablation_PrismLayersPro_lora128_baseline_ens_syn"
 echo "Started at: $(date)"
@@ -12,6 +12,7 @@ python inference_qwen_image_edit_our.py \
     --model_path /mnt/hero_blob/preweight/Qwen/Qwen/Qwen-Image-Edit-2509 \
     --input_dir /mnt/hero_blob/DATASET/SynthText/PrismLayersPro/paired_data/all_text \
     --output_dir /mnt/hero_blob/TESTRESULTS/qwen_baselines/Qwen-Image-Edit2509_ablation_PrismLayersPro_lora128_baseline_ens_syn \
+    --lora_path /home/v-qinhyang/code/hero_blob/qwenoutput/plain_lora/edit_plus_ablation_ens_syn_005_lora_128d_5e-5_16ep-000006.safetensors \
     --num_inference_steps 50 \
     --guidance_scale 5.0
 

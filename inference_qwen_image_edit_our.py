@@ -234,7 +234,25 @@ def load_models(pretrained_model_name_or_path="/home/v-qinhyang/code/hero_blob/p
         print("QwenImageEditPlusPipeline Models loaded successfully!")
         weight_name = os.path.basename(lora_path)
         model_name = "lora_" + weight_name.replace(".safetensors", "")
-        pipe.load_lora_weights(lora_path, weight_name=weight_name)
+        if os.path.exists(lora_path):
+            print(f"\nLoading LoRA from: {lora_path}")
+            try:
+                # 获取 LoRA 文件所在的目录和文件名
+                lora_dir = os.path.dirname(lora_path)
+                lora_filename = os.path.basename(lora_path)
+                
+                # 使用 local_files_only=True 强制从本地加载
+                pipe.load_lora_weights(
+                    lora_dir,
+                    weight_name=lora_filename,
+                    local_files_only=True
+                )
+                print(f"✓ Successfully loaded LoRA: {lora_filename}")
+                model_name = "lora_" + lora_filename.replace(".safetensors", "")
+            except Exception as e:
+                print(f"✗ Error loading LoRA: {e}")
+                print(f"  Type: {type(e).__name__}")
+                
     pipe = pipe.to(device)
     return pipe, model_name
     # args, pipe, filename, guidance_scale, output_dir, device
@@ -290,6 +308,72 @@ def crop_white_instance(mask_image, paste_image):
     square_image.paste(paste_clip_image, (x_offset, y_offset))
     return square_image
 
+def _nearest_multiple(value: int, base: int) -> int:
+    m = int(round(value / base)) * base
+    return max(base, m)
+
+
+def resize_and_pad(img: Image.Image, align: int = 32, pad_color=(0,0,0)):
+    """
+    将输入图像保持长宽比缩放：把长边 resize 到最近的 align 的倍数，
+    短边按照相同比例缩放后 pad 到 align 的倍数（居中 pad）。
+    返回 (padded_image, meta)：
+      meta 包含 original_size, resized_size (无 pad), padded_size, pad=(left,top,right,bottom), scale, is_width_long
+    """
+    orig_w, orig_h = img.size
+    is_width_long = orig_w >= orig_h
+
+    long_side = orig_w if is_width_long else orig_h
+    short_side = orig_h if is_width_long else orig_w
+
+    new_long = _nearest_multiple(long_side, align)
+    scale = new_long / float(long_side)
+    new_short = max(1, int(round(short_side * scale)))
+
+    if is_width_long:
+        new_w, new_h = new_long, new_short
+    else:
+        new_w, new_h = new_short, new_long
+
+    resized = img.resize((new_w, new_h), Image.LANCZOS)
+
+    # 计算 pad 到 align 的倍数
+    padded_w = ((new_w + align - 1) // align) * align
+    padded_h = ((new_h + align - 1) // align) * align
+    pad_w = padded_w - new_w
+    pad_h = padded_h - new_h
+    left = pad_w // 2
+    right = pad_w - left
+    top = pad_h // 2
+    bottom = pad_h - top
+
+    padded = Image.new("RGB", (padded_w, padded_h), pad_color)
+    padded.paste(resized, (left, top))
+
+    meta = {
+        "original_size": (orig_w, orig_h),
+        "is_width_long": is_width_long,
+        "scale": scale,
+        "resized_size": (new_w, new_h),          # 无 pad 的尺寸，用于后续 crop
+        "padded_size": (padded_w, padded_h),
+        "pad": (left, top, right, bottom)        # 用于去掉 padding
+    }
+    return padded, meta
+
+
+def crop_and_restore(output_padded_image: Image.Image, meta: dict, resample=Image.LANCZOS):
+    """
+    去掉 padding，得到缩放前的短边尺寸的图像（resized_size），
+    然后按 original_size 恢复回原始分辨率。
+    """
+    left, top, right, bottom = meta["pad"]
+    new_w, new_h = meta["resized_size"]
+    # 裁剪出无 pad 的区域
+    crop_box = (left, top, left + new_w, top + new_h)
+    cropped = output_padded_image.crop(crop_box)
+    orig_w, orig_h = meta["original_size"]
+    restored = cropped.resize((orig_w, orig_h), resample)
+    return restored, cropped
 
 def _process_single_image(args, pipe, filename, true_cfg_scale,num_inference_steps, output_dir, device):
     """处理单张图像"""
@@ -339,22 +423,36 @@ def _process_single_image(args, pipe, filename, true_cfg_scale,num_inference_ste
     except Exception as e:
         print(f"Failed to load images for {filename}: {e}")
         return None
+    if args.dilate_kernel > 0:
+        kernel = cv2.getStructuringElement(
+            cv2.MORPH_RECT,
+            (int(args.dilate_kernel * 2 + 1), int(args.dilate_kernel * 2 + 1))
+        )
+        mask_image = cv2.dilate(np.array(mask_image), kernel)
+        mask_image = Image.fromarray(mask_image)        
     mask_image = _ensure_l_mode_binary(mask_image)
     masked_image = _make_masked_image(input_image, mask_image)
-    input_image, _, _ = extract_masked_region_with_mask(
-                    ref_image=input_image,
-                    ref_mask=mask_image,
-                    align_to=32,
-                    padding=0
-                )    
+    padded_masked_image, meta = resize_and_pad(masked_image, align=32)
+    padded_input_image, _ = resize_and_pad(input_image, align=32)
+    padded_mask_image, _ = resize_and_pad(mask_image.convert("RGB"), align=32, pad_color=(0,0,0))
+    padded_mask_image = padded_mask_image.convert("L")
+    padded_clean_image, _ = resize_and_pad(clean_image, align=32)
+
+
+    # input_image, _, _ = extract_masked_region_with_mask(
+    #                 ref_image=input_image,
+    #                 ref_mask=mask_image,
+    #                 align_to=32,
+    #                 padding=0
+    #             )    
 
     output_type = "pil"
-    W, H = clean_image.size
+    W, H = padded_clean_image.size
     calculated_width, calculated_height = calculate_dimensions(1024 * 1024, W / H)
     height =  calculated_height
     width = calculated_width
 
-    W, H = clean_image.size
+    W, H = padded_clean_image.size
     cond_w, cond_h = calculate_dimensions(CONDITION_IMAGE_AREA, W / H)
     vae_w, vae_h   = calculate_dimensions(VAE_IMAGE_AREA,       W / H)
 
@@ -369,12 +467,12 @@ def _process_single_image(args, pipe, filename, true_cfg_scale,num_inference_ste
     with torch.no_grad():
         # Load VL Image
         # ---- 文本编码（带图条件）：建议使用 masked + ref 两张作为 VL 条件 ----
-        pipe.vae.to(device)
+        # pipe.vae.to(device)
         pipe.text_encoder.to(device)
         if "004" in args.model_name: 
-            pasted_image = crop_white_instance(mask_image, input_image)
+            pasted_image = crop_white_instance(padded_mask_image, padded_input_image)
             cond_images = [
-                pipe.image_processor.resize(input_image, cond_h, cond_w),
+                pipe.image_processor.resize(padded_input_image, cond_h, cond_w),
                 pipe.image_processor.resize(pasted_image,    cond_h, cond_w),
             ]
             prompt_embeds, prompt_embeds_mask = pipe.encode_prompt(
@@ -386,7 +484,7 @@ def _process_single_image(args, pipe, filename, true_cfg_scale,num_inference_ste
                 )
         elif "005" in args.model_name:
             cond_images = [
-                pipe.image_processor.resize(masked_image, cond_h, cond_w),
+                pipe.image_processor.resize(padded_masked_image, cond_h, cond_w),
             ]
             prompt_embeds, prompt_embeds_mask = pipe.encode_prompt(
                     prompt=["remove all the text"],
@@ -397,7 +495,7 @@ def _process_single_image(args, pipe, filename, true_cfg_scale,num_inference_ste
                 )        
         else:
             cond_images = [
-                pipe.image_processor.resize(input_image, cond_h, cond_w),
+                pipe.image_processor.resize(padded_input_image, cond_h, cond_w),
             ]
             # remove all the text
             prompt_embeds, prompt_embeds_mask = pipe.encode_prompt(
@@ -435,7 +533,7 @@ def _process_single_image(args, pipe, filename, true_cfg_scale,num_inference_ste
         vae_image_sizes = []
         vae_images = []
         if "001" in args.model_name or "004" in args.model_name or "005" in args.model_name:
-            for pil in [masked_image, mask_image.convert("RGB")]:
+            for pil in [padded_masked_image, padded_mask_image.convert("RGB")]:
                 image_width, image_height = pil.size
                 vae_width, vae_height = calculate_dimensions(VAE_IMAGE_AREA, image_width / image_height)
                 vae_image_sizes.append((vae_width, vae_height))
@@ -446,7 +544,7 @@ def _process_single_image(args, pipe, filename, true_cfg_scale,num_inference_ste
             #     )
 
         elif "002" in args.model_name:
-            for pil in [masked_image]:
+            for pil in [padded_masked_image]:
                 image_width, image_height = pil.size
                 vae_width, vae_height = calculate_dimensions(VAE_IMAGE_AREA, image_width / image_height)
                 vae_image_sizes.append((vae_width, vae_height))
@@ -456,7 +554,7 @@ def _process_single_image(args, pipe, filename, true_cfg_scale,num_inference_ste
                 # )
 
         elif "003" in args.model_name:
-            for pil in [input_image, mask_image.convert("RGB")]:
+            for pil in [padded_input_image, padded_mask_image.convert("RGB")]:
                 image_width, image_height = pil.size
                 vae_width, vae_height = calculate_dimensions(VAE_IMAGE_AREA, image_width / image_height)
                 vae_image_sizes.append((vae_width, vae_height))
@@ -466,7 +564,7 @@ def _process_single_image(args, pipe, filename, true_cfg_scale,num_inference_ste
                 # )
         
         else:
-            for pil in [input_image]:
+            for pil in [padded_input_image]:
                 # print(pil)
                 image_width, image_height = pil.size
                 vae_width, vae_height = calculate_dimensions(VAE_IMAGE_AREA, image_width / image_height)
@@ -605,7 +703,7 @@ def _process_single_image(args, pipe, filename, true_cfg_scale,num_inference_ste
 
 
         pipe._current_timestep = None
-
+        
         latents = pipe._unpack_latents(latents, height, width, pipe.vae_scale_factor)
         latents = latents.to(pipe.vae.dtype)
         latents_mean = (
@@ -617,6 +715,7 @@ def _process_single_image(args, pipe, filename, true_cfg_scale,num_inference_ste
             latents.device, latents.dtype
         )
         latents = latents / latents_std + latents_mean
+        pipe.vae.to(device)
         decoded_image = pipe.vae.decode(latents.to(device), return_dict=False)[0][:, :, 0]
         image = pipe.image_processor.postprocess(decoded_image, output_type=output_type)
 
@@ -625,10 +724,13 @@ def _process_single_image(args, pipe, filename, true_cfg_scale,num_inference_ste
 
     # 生成结果
     result_image = image[0] if isinstance(image, list) else image
-    
     # 保存结果
+    result_image = result_image.resize((padded_input_image.size), Image.LANCZOS)
+    result_image, _ = crop_and_restore(result_image, meta, resample=Image.LANCZOS)
     result_image.save(os.path.join(output_dir, filename))
-    
+    input_image, _ = crop_and_restore(padded_input_image, meta, resample=Image.LANCZOS)
+    clean_image, _ = crop_and_restore(padded_clean_image, meta, resample=Image.LANCZOS)
+    mask_image, _ = crop_and_restore(padded_mask_image, meta, resample=Image.LANCZOS)
     # 创建拼接图像
     _create_concat_image(
         input_image, result_image, clean_image, mask_image,
@@ -946,7 +1048,7 @@ def _save_csv_results(output_dir, individual_scores, model_name, guidance_scale)
 
 def run_test(args, model_name, pipe: QwenImageEditPlusPipeline, device):
     # 创建输出目录
-    guidance_scale = args.guidance_scale
+    guidance_scale = args.guidance_scale[0]
     output_dir = args.output_dir
     num_inference_steps = args.num_inference_steps
     output_dir = os.path.join(
@@ -988,7 +1090,7 @@ def run_test(args, model_name, pipe: QwenImageEditPlusPipeline, device):
     for i, filename in enumerate(todolist):
         
         result = _process_single_image(
-            args, pipe, filename, guidance_scale[0], num_inference_steps, output_dir, device
+            args, pipe, filename, guidance_scale, num_inference_steps, output_dir, device
         )
         
         if result is not None:

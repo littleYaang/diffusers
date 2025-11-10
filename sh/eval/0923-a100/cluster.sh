@@ -58,13 +58,13 @@ echo "Usage: ./cluster_scripts/cluster_0.sh 0"
 mkdir -p /mnt/hero_blob/text_erase_lei/logs/eval_1109
 
 idx=$(($1*4))
-nohup bash generated_scripts/eval_${idx}_laion.sh > /mnt/hero_blob/text_erase_lei/logs/eval_1109/${idx}.log 2>&1 &
+nohup bash generated_scripts/eval_${:03d}_laion.sh > /mnt/hero_blob/text_erase_lei/logs/eval_1109/${idx}.log 2>&1 &
 
 idx=$(($1*4+1))
-nohup bash generated_scripts/eval_001_prim.sh > /mnt/hero_blob/text_erase_lei/logs/eval_1109/${idx}.log 2>&1 &
+nohup bash generated_scripts/eval_${:03d}_prim.sh > /mnt/hero_blob/text_erase_lei/logs/eval_1109/${idx}.log 2>&1 &
 
 idx=$(($1*4+2))
-nohup bash generated_scripts/eval_001_scut.sh > /mnt/hero_blob/text_erase_lei/logs/eval_1109/${idx}.log 2>&1 &
+nohup bash generated_scripts/eval_${:03d}_scut.sh > /mnt/hero_blob/text_erase_lei/logs/eval_1109/${idx}.log 2>&1 &
 
 idx=$(($1*4+3))
-nohup bash generated_scripts/eval_001_syn.sh > /mnt/hero_blob/text_erase_lei/logs/eval_1109/${idx}.log 2>&1 &
+nohup bash generated_scripts/eval_${:03d}_syn.sh > /mnt/hero_blob/text_erase_lei/logs/eval_1109/${idx}.log 2>&1 &

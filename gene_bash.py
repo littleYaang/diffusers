@@ -28,15 +28,15 @@ datasets = {
 }
 
 model_path = "/mnt/hero_blob/preweight/Qwen/Qwen/Qwen-Image-Edit-2509"
-lora_template = "/home/v-qinhyang/code/hero_blob/qwenoutput/plain_lora/edit_plus_ablation_ens_syn_{:03d}_lora_128d_5e-5_16ep-000004.safetensors"
+lora_template = "/home/v-qinhyang/code/hero_blob/qwenoutput/plain_lora/edit_plus_ablation_ens_syn_{:03d}_lora_128d_5e-5_16ep-000006.safetensors"
 output_base = "/mnt/hero_blob/TESTRESULTS/qwen_baselines"
 
 # 创建输出目录
 os.makedirs("generated_scripts", exist_ok=True)
 
 # 生成20个脚本
-# for model_id in range(1, 6):  # 001-005
-for model_id in range(1):
+for model_id in range(1, 6):  # 001-005
+# for model_id in range(1):
     # model_num = f"{model_id:03d}"
     model_num = f"baseline"
     lora_path = lora_template.format(model_id)
@@ -67,6 +67,7 @@ python inference_qwen_image_edit_our.py \\
     --model_path {model_path} \\
     --input_dir {input_dir} \\
     --output_dir {output_dir} \\
+    --lora_path {lora_path} \\
     --num_inference_steps 50 \\
     --guidance_scale 5.0
 

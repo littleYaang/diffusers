@@ -291,7 +291,7 @@ class QwenBenchmark:
         for guidance_scale in self.args.guidance_scales:
             # for mask_type in self.args.mask_types:
             self._run_single_test(
-                model_name, guidance_scale
+                model_name, guidance_scale[0]
             )
 
 
