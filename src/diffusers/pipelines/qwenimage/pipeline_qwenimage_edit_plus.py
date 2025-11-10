@@ -315,14 +315,15 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         batch_size = len(prompt) if prompt_embeds is None else prompt_embeds.shape[0]
 
         if prompt_embeds is None:
-            prompt_embeds, prompt_embeds_mask = self._get_qwen_prompt_embeds(prompt, image, device)
+            prompt_embeds, prompt_embeds_mask = self._get_qwen_prompt_embeds(prompt, image, "cpu")
 
         _, seq_len, _ = prompt_embeds.shape
         prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
         prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
         prompt_embeds_mask = prompt_embeds_mask.repeat(1, num_images_per_prompt, 1)
         prompt_embeds_mask = prompt_embeds_mask.view(batch_size * num_images_per_prompt, seq_len)
-
+        prompt_embeds = prompt_embeds.to(device=device)
+        prompt_embeds_mask = prompt_embeds_mask.to(device=device)
         return prompt_embeds, prompt_embeds_mask
 
     # Copied from diffusers.pipelines.qwenimage.pipeline_qwenimage_edit.QwenImageEditPipeline.check_inputs
@@ -456,7 +457,7 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                 images = [images]
             all_image_latents = []
             for image in images:
-                image = image.to(device=device, dtype=dtype)
+                image = image.to(device="cpu", dtype=dtype)
                 if image.shape[1] != self.latent_channels:
                     image_latents = self._encode_vae_image(image=image, generator=generator)
                 else:
@@ -478,7 +479,7 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                 )
                 all_image_latents.append(image_latents)
             image_latents = torch.cat(all_image_latents, dim=1)
-
+        image_latents = image_latents.to(device=device, dtype=dtype)
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
