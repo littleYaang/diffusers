@@ -10,7 +10,7 @@ LOG_DIR="/mnt/hero_blob/text_erase_lei/logs/eval_1109"
 mkdir -p ${LOG_DIR}
 
 echo "========================================"
-echo "Starting cluster for model 001"
+echo "Starting cluster for model 000"
 echo "Started at: $(date)"
 echo "========================================"
 
@@ -25,11 +25,11 @@ declare -A datasets=(
 # 启动所有任务
 for dataset in "${!datasets[@]}"; do
     gpu_id=${datasets[$dataset]}
-    script_path="generated_scripts/eval_baseline_${dataset}.sh"
-    log_file="${LOG_DIR}/001_${dataset}.log"
-    
+    script_path="generated_scripts/eval_000_${dataset}.sh"
+    log_file="${LOG_DIR}/000_${dataset}.log"
+
     if [ -f "$script_path" ]; then
-        echo "Running eval_baseline_${dataset}.sh on GPU ${gpu_id}..."
+        echo "Running eval_000_${dataset}.sh on GPU ${gpu_id}..."
         nohup bash "$script_path" > "$log_file" 2>&1 &
         echo "  PID: $! | Log: $log_file"
     else
@@ -38,7 +38,7 @@ for dataset in "${!datasets[@]}"; do
 done
 
 echo ""
-echo "All 4 jobs for model 001 submitted"
+echo "All 4 jobs for model 000 submitted"
 echo "Waiting for completion..."
 
 # 等待所有后台任务完成
@@ -46,7 +46,7 @@ wait
 
 echo ""
 echo "========================================"
-echo "Cluster for model 001 completed"
+echo "Cluster for model 000 completed"
 echo "Completed at: $(date)"
 echo "========================================"
 

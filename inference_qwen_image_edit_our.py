@@ -35,6 +35,8 @@ import torch.nn.functional as F
 
 # from diffusers import QwenImageEditPlusPipeline
 from diffusers.pipelines.qwenimage.pipeline_qwenimage_edit_plus_ours import QwenImageEditPlusPipeline,retrieve_timesteps,calculate_shift
+from diffusers.pipelines.qwenimage.pipeline_qwenimage_edit_plus_inpaint import QwenImageEditPlusInpaintPipeline
+from diffusers import QwenImageInpaintPipeline,QwenImageEditInpaintPipeline
 CONDITION_IMAGE_AREA = 384 * 384
 VAE_IMAGE_AREA = 1024 * 1024
 
@@ -219,16 +221,25 @@ def load_models(pretrained_model_name_or_path="/home/v-qinhyang/code/hero_blob/p
     """加载所有必要的模型组件"""
     print(f"Loading models from: {pretrained_model_name_or_path}")
     if lora_path is None:
-        if "2509" in pretrained_model_name_or_path:
-            pipe = QwenImageEditPlusPipeline.from_pretrained(pretrained_model_name_or_path, torch_dtype=torch.bfloat16)
-            print("QwenImageEditPlusPipeline Models loaded successfully!")
-        elif "Edit" in pretrained_model_name_or_path:
-            pipe = QwenImageEditPipeline.from_pretrained(pretrained_model_name_or_path, torch_dtype=torch.bfloat16)
-            print("QwenImageEditPipeline Models loaded successfully!")
+        if args.inpaint_pipe == True:
+            if "2509" in pretrained_model_name_or_path:
+                pipe = QwenImageEditInpaintPipeline.from_pretrained(pretrained_model_name_or_path, torch_dtype=torch.bfloat16)
+            print("QwenImageEditInpaintPipeline Models loaded successfully!")
+            model_name = "baseline_inpaintpipe"
         else:
-            pipe = QwenImagePipeline.from_pretrained(pretrained_model_name_or_path, torch_dtype=torch.bfloat16)
-            print("QwenImagePipeline Models loaded successfully!")
-        model_name = os.path.basename(pretrained_model_name_or_path).replace(".safetensors", "")
+            if "2509" in pretrained_model_name_or_path:
+                pipe = QwenImageEditPlusPipeline.from_pretrained(pretrained_model_name_or_path, torch_dtype=torch.bfloat16)
+                print("QwenImageEditPlusPipeline Models loaded successfully!")
+                model_name = "baseline_editpluspipe"
+            elif "Edit" in pretrained_model_name_or_path:
+                pipe = QwenImageEditPipeline.from_pretrained(pretrained_model_name_or_path, torch_dtype=torch.bfloat16)
+                print("QwenImageEditPipeline Models loaded successfully!")
+                model_name = "baseline_editpipe"
+            else:
+                pipe = QwenImagePipeline.from_pretrained(pretrained_model_name_or_path, torch_dtype=torch.bfloat16)
+                print("QwenImagePipeline Models loaded successfully!")
+                model_name = "baseline_pipe"
+           
     else:
         pipe = QwenImageEditPlusPipeline.from_pretrained(pretrained_model_name_or_path, torch_dtype=torch.bfloat16)
         print("QwenImageEditPlusPipeline Models loaded successfully!")
@@ -438,292 +449,306 @@ def _process_single_image(args, pipe, filename, true_cfg_scale,num_inference_ste
     padded_mask_image = padded_mask_image.convert("L")
     padded_clean_image, _ = resize_and_pad(clean_image, align=32)
 
-
+    if args.inpaint_pipe == True:
+        W, H = padded_clean_image.size
+        calculated_width, calculated_height = calculate_dimensions(1024 * 1024, W / H)
+        result = pipe(
+            prompt="remove all the text",
+            negative_prompt=" ",
+            width=calculated_width,
+            height=calculated_height,
+            image=padded_input_image,
+            mask_image=padded_mask_image,
+            true_cfg_scale=true_cfg_scale,
+            num_inference_steps=num_inference_steps,
+            strength=1,
+        )
+        result_image = result.images[0]
     # input_image, _, _ = extract_masked_region_with_mask(
     #                 ref_image=input_image,
     #                 ref_mask=mask_image,
     #                 align_to=32,
     #                 padding=0
     #             )    
+    else:
+        output_type = "pil"
+        W, H = padded_clean_image.size
+        calculated_width, calculated_height = calculate_dimensions(1024 * 1024, W / H)
+        height =  calculated_height
+        width = calculated_width
 
-    output_type = "pil"
-    W, H = padded_clean_image.size
-    calculated_width, calculated_height = calculate_dimensions(1024 * 1024, W / H)
-    height =  calculated_height
-    width = calculated_width
+        W, H = padded_clean_image.size
+        cond_w, cond_h = calculate_dimensions(CONDITION_IMAGE_AREA, W / H)
+        vae_w, vae_h   = calculate_dimensions(VAE_IMAGE_AREA,       W / H)
 
-    W, H = padded_clean_image.size
-    cond_w, cond_h = calculate_dimensions(CONDITION_IMAGE_AREA, W / H)
-    vae_w, vae_h   = calculate_dimensions(VAE_IMAGE_AREA,       W / H)
+        guidance_scale = None
+        attention_kwargs = None
+        pipe._guidance_scale = guidance_scale
+        pipe._attention_kwargs = attention_kwargs
+        pipe._current_timestep = None
+        pipe._interrupt = False
 
-    guidance_scale = None
-    attention_kwargs = None
-    pipe._guidance_scale = guidance_scale
-    pipe._attention_kwargs = attention_kwargs
-    pipe._current_timestep = None
-    pipe._interrupt = False
-
-    batch_size = 1
-    with torch.no_grad():
-        # Load VL Image
-        # ---- 文本编码（带图条件）：建议使用 masked + ref 两张作为 VL 条件 ----
-        # pipe.vae.to(device)
-        pipe.text_encoder.to(device)
-        if "004" in args.model_name: 
-            pasted_image = crop_white_instance(padded_mask_image, padded_input_image)
-            cond_images = [
-                pipe.image_processor.resize(padded_input_image, cond_h, cond_w),
-                pipe.image_processor.resize(pasted_image,    cond_h, cond_w),
-            ]
-            prompt_embeds, prompt_embeds_mask = pipe.encode_prompt(
-                    prompt=["remove the text in Picture 2"],
+        batch_size = 1
+        with torch.no_grad():
+            # Load VL Image
+            # ---- 文本编码（带图条件）：建议使用 masked + ref 两张作为 VL 条件 ----
+            # pipe.vae.to(device)
+            pipe.text_encoder.to(device)
+            if "004" in args.model_name: 
+                pasted_image = crop_white_instance(padded_mask_image, padded_input_image)
+                cond_images = [
+                    pipe.image_processor.resize(padded_input_image, cond_h, cond_w),
+                    pipe.image_processor.resize(pasted_image,    cond_h, cond_w),
+                ]
+                prompt_embeds, prompt_embeds_mask = pipe.encode_prompt(
+                        prompt=["remove the text in Picture 2"],
+                        image=cond_images,
+                        device=pipe._execution_device,
+                        num_images_per_prompt=1,
+                        max_sequence_length=512,
+                    )
+            elif "005" in args.model_name:
+                cond_images = [
+                    pipe.image_processor.resize(padded_masked_image, cond_h, cond_w),
+                ]
+                prompt_embeds, prompt_embeds_mask = pipe.encode_prompt(
+                        prompt=["remove all the text"],
+                        image=cond_images,
+                        device=pipe._execution_device,
+                        num_images_per_prompt=1,
+                        max_sequence_length=512,
+                    )        
+            else:
+                cond_images = [
+                    pipe.image_processor.resize(padded_input_image, cond_h, cond_w),
+                ]
+                # remove all the text
+                prompt_embeds, prompt_embeds_mask = pipe.encode_prompt(
+                        prompt=["remove all the text"],
+                        image=cond_images,
+                        device=pipe._execution_device,
+                        num_images_per_prompt=1,
+                        max_sequence_length=512,
+                    )        
+            do_true_cfg = true_cfg_scale > 1
+            if do_true_cfg:
+                negative_prompt_embeds, negative_prompt_embeds_mask = pipe.encode_prompt(
                     image=cond_images,
+                    prompt=[" "],  # 空文本作为 negative prompt
                     device=pipe._execution_device,
                     num_images_per_prompt=1,
                     max_sequence_length=512,
                 )
-        elif "005" in args.model_name:
-            cond_images = [
-                pipe.image_processor.resize(padded_masked_image, cond_h, cond_w),
-            ]
-            prompt_embeds, prompt_embeds_mask = pipe.encode_prompt(
-                    prompt=["remove all the text"],
-                    image=cond_images,
-                    device=pipe._execution_device,
-                    num_images_per_prompt=1,
-                    max_sequence_length=512,
-                )        
-        else:
-            cond_images = [
-                pipe.image_processor.resize(padded_input_image, cond_h, cond_w),
-            ]
-            # remove all the text
-            prompt_embeds, prompt_embeds_mask = pipe.encode_prompt(
-                    prompt=["remove all the text"],
-                    image=cond_images,
-                    device=pipe._execution_device,
-                    num_images_per_prompt=1,
-                    max_sequence_length=512,
-                )        
-        do_true_cfg = true_cfg_scale > 1
-        if do_true_cfg:
-            negative_prompt_embeds, negative_prompt_embeds_mask = pipe.encode_prompt(
-                image=cond_images,
-                prompt=[" "],  # 空文本作为 negative prompt
-                device=pipe._execution_device,
-                num_images_per_prompt=1,
-                max_sequence_length=512,
+            # ---- VAE 条件段（pack 成 token 后拼接在 token 维）----
+            # masked, ref, tar_mask(转RGB)
+            #     VAE             VL
+            # 000 i d              remove all the text,i
+            # 001 m_i,m  d         remove all the text,i
+            # 002 m_i             remove all the text,i
+            # 003 i,m             remove all the text,i
+            # 004 m_i,m  d         remove the text in Picture 2,i,paste
+            # 005 m_i,m  d         remove all the text,m_i
+            # baseline i  d        remove all the text,i
+            # vae_tensors_5d: List[torch.Tensor] = []
+            # if "000" in args.model_name or "Qwen-Image-Edit-2509" in args.model_name:
+            #     for pil in (input_image):
+            #         vae_tensors_5d.append(
+            #             pipe.image_processor.preprocess(pil, vae_h, vae_w).unsqueeze(2)  # [1,3,1,H,W]
+            #         )
+            vae_image_sizes = []
+            vae_images = []
+            if "001" in args.model_name or "004" in args.model_name or "005" in args.model_name:
+                for pil in [padded_masked_image, padded_mask_image.convert("RGB")]:
+                    image_width, image_height = pil.size
+                    vae_width, vae_height = calculate_dimensions(VAE_IMAGE_AREA, image_width / image_height)
+                    vae_image_sizes.append((vae_width, vae_height))
+                    vae_images.append(pipe.image_processor.preprocess(pil, vae_height, vae_width).unsqueeze(2))
+                # for pil in (masked_image, mask_image.convert("RGB")):
+                #     vae_tensors_5d.append(
+                #         pipe.image_processor.preprocess(pil, vae_h, vae_w).unsqueeze(2)  # [1,3,1,H,W]
+                #     )
+
+            elif "002" in args.model_name:
+                for pil in [padded_masked_image]:
+                    image_width, image_height = pil.size
+                    vae_width, vae_height = calculate_dimensions(VAE_IMAGE_AREA, image_width / image_height)
+                    vae_image_sizes.append((vae_width, vae_height))
+                    vae_images.append(pipe.image_processor.preprocess(pil, vae_height, vae_width).unsqueeze(2))
+                    # vae_tensors_5d.append(
+                    #     pipe.image_processor.preprocess(pil, vae_h, vae_w).unsqueeze(2)  # [1,3,1,H,W]
+                    # )
+
+            elif "003" in args.model_name:
+                for pil in [padded_input_image, padded_mask_image.convert("RGB")]:
+                    image_width, image_height = pil.size
+                    vae_width, vae_height = calculate_dimensions(VAE_IMAGE_AREA, image_width / image_height)
+                    vae_image_sizes.append((vae_width, vae_height))
+                    vae_images.append(pipe.image_processor.preprocess(pil, vae_height, vae_width).unsqueeze(2))
+                    # vae_tensors_5d.append(
+                    #     pipe.image_processor.preprocess(pil, vae_h, vae_w).unsqueeze(2)  # [1,3,1,H,W]
+                    # )
+            
+            else:
+                for pil in [padded_input_image]:
+                    # print(pil)
+                    image_width, image_height = pil.size
+                    vae_width, vae_height = calculate_dimensions(VAE_IMAGE_AREA, image_width / image_height)
+                    vae_image_sizes.append((vae_width, vae_height))
+                    vae_images.append(pipe.image_processor.preprocess(pil, vae_height, vae_width).unsqueeze(2))
+                    # vae_tensors_5d.append(
+                    #     pipe.image_processor.preprocess(pil, vae_h, vae_w).unsqueeze(2)  # [1,3,1,H,W]
+                    # )        
+
+            # 4. Prepare latent variables
+            num_channels_latents = pipe.transformer.config.in_channels // 4
+            
+
+            latents, image_latents = pipe.prepare_latents(
+                vae_images,
+                batch_size ,
+                num_channels_latents,
+                vae_h,
+                vae_w, 
+                prompt_embeds.dtype,
+                device,
+                generator=None,
+                latents=None,
             )
-        # ---- VAE 条件段（pack 成 token 后拼接在 token 维）----
-        # masked, ref, tar_mask(转RGB)
-        #     VAE             VL
-        # 000 i d              remove all the text,i
-        # 001 m_i,m  d         remove all the text,i
-        # 002 m_i             remove all the text,i
-        # 003 i,m             remove all the text,i
-        # 004 m_i,m  d         remove the text in Picture 2,i,paste
-        # 005 m_i,m  d         remove all the text,m_i
-        # baseline i  d        remove all the text,i
-        # vae_tensors_5d: List[torch.Tensor] = []
-        # if "000" in args.model_name or "Qwen-Image-Edit-2509" in args.model_name:
-        #     for pil in (input_image):
-        #         vae_tensors_5d.append(
-        #             pipe.image_processor.preprocess(pil, vae_h, vae_w).unsqueeze(2)  # [1,3,1,H,W]
-        #         )
-        vae_image_sizes = []
-        vae_images = []
-        if "001" in args.model_name or "004" in args.model_name or "005" in args.model_name:
-            for pil in [padded_masked_image, padded_mask_image.convert("RGB")]:
-                image_width, image_height = pil.size
-                vae_width, vae_height = calculate_dimensions(VAE_IMAGE_AREA, image_width / image_height)
-                vae_image_sizes.append((vae_width, vae_height))
-                vae_images.append(pipe.image_processor.preprocess(pil, vae_height, vae_width).unsqueeze(2))
-            # for pil in (masked_image, mask_image.convert("RGB")):
-            #     vae_tensors_5d.append(
-            #         pipe.image_processor.preprocess(pil, vae_h, vae_w).unsqueeze(2)  # [1,3,1,H,W]
-            #     )
+            img_shapes = [
+                [
+                    (1, height // pipe.vae_scale_factor // 2, width // pipe.vae_scale_factor // 2),
+                    *[
+                        (1, vae_height // pipe.vae_scale_factor // 2, vae_width // pipe.vae_scale_factor // 2)
+                        for vae_width, vae_height in vae_image_sizes
+                    ],
+                ]
+            ] * batch_size
+        # device = pipe._execution_device
+            pipe.vae.to("cpu")
+            pipe.text_encoder.to("cpu")
 
-        elif "002" in args.model_name:
-            for pil in [padded_masked_image]:
-                image_width, image_height = pil.size
-                vae_width, vae_height = calculate_dimensions(VAE_IMAGE_AREA, image_width / image_height)
-                vae_image_sizes.append((vae_width, vae_height))
-                vae_images.append(pipe.image_processor.preprocess(pil, vae_height, vae_width).unsqueeze(2))
-                # vae_tensors_5d.append(
-                #     pipe.image_processor.preprocess(pil, vae_h, vae_w).unsqueeze(2)  # [1,3,1,H,W]
-                # )
+            # 5. Prepare timesteps
 
-        elif "003" in args.model_name:
-            for pil in [padded_input_image, padded_mask_image.convert("RGB")]:
-                image_width, image_height = pil.size
-                vae_width, vae_height = calculate_dimensions(VAE_IMAGE_AREA, image_width / image_height)
-                vae_image_sizes.append((vae_width, vae_height))
-                vae_images.append(pipe.image_processor.preprocess(pil, vae_height, vae_width).unsqueeze(2))
-                # vae_tensors_5d.append(
-                #     pipe.image_processor.preprocess(pil, vae_h, vae_w).unsqueeze(2)  # [1,3,1,H,W]
-                # )
-        
-        else:
-            for pil in [padded_input_image]:
-                # print(pil)
-                image_width, image_height = pil.size
-                vae_width, vae_height = calculate_dimensions(VAE_IMAGE_AREA, image_width / image_height)
-                vae_image_sizes.append((vae_width, vae_height))
-                vae_images.append(pipe.image_processor.preprocess(pil, vae_height, vae_width).unsqueeze(2))
-                # vae_tensors_5d.append(
-                #     pipe.image_processor.preprocess(pil, vae_h, vae_w).unsqueeze(2)  # [1,3,1,H,W]
-                # )        
+            sigmas = None
+            sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps) if sigmas is None else sigmas
+            image_seq_len = latents.shape[1]
+            mu = calculate_shift(
+                image_seq_len,
+                pipe.scheduler.config.get("base_image_seq_len", 256),
+                pipe.scheduler.config.get("max_image_seq_len", 4096),
+                pipe.scheduler.config.get("base_shift", 0.5),
+                pipe.scheduler.config.get("max_shift", 1.15),
+            )
+            timesteps, num_inference_steps = retrieve_timesteps(
+                pipe.scheduler,
+                num_inference_steps,
+                device,
+                sigmas=sigmas,
+                mu=mu,
+            )
+            num_warmup_steps = max(len(timesteps) - num_inference_steps * pipe.scheduler.order, 0)
+            pipe._num_timesteps = len(timesteps)
+            # handle guidance
+            guidance_scale = None
+            if pipe.transformer.config.guidance_embeds and guidance_scale is None:
+                raise ValueError("guidance_scale is required for guidance-distilled model.")
+            elif pipe.transformer.config.guidance_embeds:
+                guidance = torch.full([1], guidance_scale, device=device, dtype=torch.float32)
+                guidance = guidance.expand(latents.shape[0])
+            elif not pipe.transformer.config.guidance_embeds and guidance_scale is not None:
+                print("Warning: guidance_scale is ignored since the model is not guidance-distilled.")
+                guidance = None
+            elif not pipe.transformer.config.guidance_embeds and guidance_scale is None:
+                guidance = None
 
-        # 4. Prepare latent variables
-        num_channels_latents = pipe.transformer.config.in_channels // 4
-        
+            
+            pipe._attention_kwargs = {}
+            txt_seq_lens = prompt_embeds_mask.sum(dim=1).tolist() if prompt_embeds_mask is not None else None
+            negative_txt_seq_lens = (
+                negative_prompt_embeds_mask.sum(dim=1).tolist() if negative_prompt_embeds_mask is not None else None
+            )
 
-        latents, image_latents = pipe.prepare_latents(
-            vae_images,
-            batch_size ,
-            num_channels_latents,
-            vae_h,
-            vae_w, 
-            prompt_embeds.dtype,
-            device,
-            generator=None,
-            latents=None,
-        )
-        img_shapes = [
-            [
-                (1, height // pipe.vae_scale_factor // 2, width // pipe.vae_scale_factor // 2),
-                *[
-                    (1, vae_height // pipe.vae_scale_factor // 2, vae_width // pipe.vae_scale_factor // 2)
-                    for vae_width, vae_height in vae_image_sizes
-                ],
-            ]
-        ] * batch_size
-    # device = pipe._execution_device
-        pipe.vae.to("cpu")
-        pipe.text_encoder.to("cpu")
+            # 6. Denoising loop
+            pipe.scheduler.set_begin_index(0)
+            with pipe.progress_bar(total=num_inference_steps) as progress_bar:
+                for i, t in enumerate(timesteps):
+                    pipe._current_timestep = t
 
-        # 5. Prepare timesteps
-
-        sigmas = None
-        sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps) if sigmas is None else sigmas
-        image_seq_len = latents.shape[1]
-        mu = calculate_shift(
-            image_seq_len,
-            pipe.scheduler.config.get("base_image_seq_len", 256),
-            pipe.scheduler.config.get("max_image_seq_len", 4096),
-            pipe.scheduler.config.get("base_shift", 0.5),
-            pipe.scheduler.config.get("max_shift", 1.15),
-        )
-        timesteps, num_inference_steps = retrieve_timesteps(
-            pipe.scheduler,
-            num_inference_steps,
-            device,
-            sigmas=sigmas,
-            mu=mu,
-        )
-        num_warmup_steps = max(len(timesteps) - num_inference_steps * pipe.scheduler.order, 0)
-        pipe._num_timesteps = len(timesteps)
-        # handle guidance
-        guidance_scale = None
-        if pipe.transformer.config.guidance_embeds and guidance_scale is None:
-            raise ValueError("guidance_scale is required for guidance-distilled model.")
-        elif pipe.transformer.config.guidance_embeds:
-            guidance = torch.full([1], guidance_scale, device=device, dtype=torch.float32)
-            guidance = guidance.expand(latents.shape[0])
-        elif not pipe.transformer.config.guidance_embeds and guidance_scale is not None:
-            print("Warning: guidance_scale is ignored since the model is not guidance-distilled.")
-            guidance = None
-        elif not pipe.transformer.config.guidance_embeds and guidance_scale is None:
-            guidance = None
-
-        
-        pipe._attention_kwargs = {}
-        txt_seq_lens = prompt_embeds_mask.sum(dim=1).tolist() if prompt_embeds_mask is not None else None
-        negative_txt_seq_lens = (
-            negative_prompt_embeds_mask.sum(dim=1).tolist() if negative_prompt_embeds_mask is not None else None
-        )
-
-        # 6. Denoising loop
-        pipe.scheduler.set_begin_index(0)
-        with pipe.progress_bar(total=num_inference_steps) as progress_bar:
-            for i, t in enumerate(timesteps):
-                pipe._current_timestep = t
-
-                latent_model_input = latents
-                if image_latents is not None:
-                    latent_model_input = torch.cat([latents, image_latents], dim=1)
-                # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
-                timestep = t.expand(latents.shape[0]).to(latents.dtype)
-                with pipe.transformer.cache_context("cond"):
-                    noise_pred = pipe.transformer(
-                        hidden_states=latent_model_input,
-                        timestep=timestep / 1000,
-                        guidance=guidance,
-                        encoder_hidden_states_mask=prompt_embeds_mask,
-                        encoder_hidden_states=prompt_embeds,
-                        img_shapes=img_shapes,
-                        txt_seq_lens=txt_seq_lens,
-                        attention_kwargs=pipe.attention_kwargs,
-                        return_dict=False,
-                    )[0]
-                    noise_pred = noise_pred[:, : latents.size(1)]
-
-                if do_true_cfg:
-                    with pipe.transformer.cache_context("uncond"):
-                        neg_noise_pred = pipe.transformer(
+                    latent_model_input = latents
+                    if image_latents is not None:
+                        latent_model_input = torch.cat([latents, image_latents], dim=1)
+                    # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
+                    timestep = t.expand(latents.shape[0]).to(latents.dtype)
+                    with pipe.transformer.cache_context("cond"):
+                        noise_pred = pipe.transformer(
                             hidden_states=latent_model_input,
                             timestep=timestep / 1000,
                             guidance=guidance,
-                            encoder_hidden_states_mask=negative_prompt_embeds_mask,
-                            encoder_hidden_states=negative_prompt_embeds,
+                            encoder_hidden_states_mask=prompt_embeds_mask,
+                            encoder_hidden_states=prompt_embeds,
                             img_shapes=img_shapes,
-                            txt_seq_lens=negative_txt_seq_lens,
+                            txt_seq_lens=txt_seq_lens,
                             attention_kwargs=pipe.attention_kwargs,
                             return_dict=False,
                         )[0]
-                    neg_noise_pred = neg_noise_pred[:, : latents.size(1)]
-                    comb_pred = neg_noise_pred + true_cfg_scale * (noise_pred - neg_noise_pred)
+                        noise_pred = noise_pred[:, : latents.size(1)]
 
-                    cond_norm = torch.norm(noise_pred, dim=-1, keepdim=True)
-                    noise_norm = torch.norm(comb_pred, dim=-1, keepdim=True)
-                    noise_pred = comb_pred * (cond_norm / noise_norm)
+                    if do_true_cfg:
+                        with pipe.transformer.cache_context("uncond"):
+                            neg_noise_pred = pipe.transformer(
+                                hidden_states=latent_model_input,
+                                timestep=timestep / 1000,
+                                guidance=guidance,
+                                encoder_hidden_states_mask=negative_prompt_embeds_mask,
+                                encoder_hidden_states=negative_prompt_embeds,
+                                img_shapes=img_shapes,
+                                txt_seq_lens=negative_txt_seq_lens,
+                                attention_kwargs=pipe.attention_kwargs,
+                                return_dict=False,
+                            )[0]
+                        neg_noise_pred = neg_noise_pred[:, : latents.size(1)]
+                        comb_pred = neg_noise_pred + true_cfg_scale * (noise_pred - neg_noise_pred)
 
-                # compute the previous noisy sample x_t -> x_t-1
-                latents_dtype = latents.dtype
-                latents = pipe.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
+                        cond_norm = torch.norm(noise_pred, dim=-1, keepdim=True)
+                        noise_norm = torch.norm(comb_pred, dim=-1, keepdim=True)
+                        noise_pred = comb_pred * (cond_norm / noise_norm)
 
-                if latents.dtype != latents_dtype:
-                    if torch.backends.mps.is_available():
-                        # some platforms (eg. apple mps) misbehave due to a pytorch bug: https://github.com/pytorch/pytorch/pull/99272
-                        latents = latents.to(latents_dtype)
+                    # compute the previous noisy sample x_t -> x_t-1
+                    latents_dtype = latents.dtype
+                    latents = pipe.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
 
-                # call the callback, if provided
-                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % pipe.scheduler.order == 0):
-                    progress_bar.update()
+                    if latents.dtype != latents_dtype:
+                        if torch.backends.mps.is_available():
+                            # some platforms (eg. apple mps) misbehave due to a pytorch bug: https://github.com/pytorch/pytorch/pull/99272
+                            latents = latents.to(latents_dtype)
+
+                    # call the callback, if provided
+                    if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % pipe.scheduler.order == 0):
+                        progress_bar.update()
 
 
-        pipe._current_timestep = None
-        
-        latents = pipe._unpack_latents(latents, height, width, pipe.vae_scale_factor)
-        latents = latents.to(pipe.vae.dtype)
-        latents_mean = (
-            torch.tensor(pipe.vae.config.latents_mean)
-            .view(1, pipe.vae.config.z_dim, 1, 1, 1)
-            .to(latents.device, latents.dtype)
-        )
-        latents_std = 1.0 / torch.tensor(pipe.vae.config.latents_std).view(1, pipe.vae.config.z_dim, 1, 1, 1).to(
-            latents.device, latents.dtype
-        )
-        latents = latents / latents_std + latents_mean
-        pipe.vae.to(device)
-        decoded_image = pipe.vae.decode(latents.to(device), return_dict=False)[0][:, :, 0]
-        image = pipe.image_processor.postprocess(decoded_image, output_type=output_type)
+            pipe._current_timestep = None
+            
+            latents = pipe._unpack_latents(latents, height, width, pipe.vae_scale_factor)
+            latents = latents.to(pipe.vae.dtype)
+            latents_mean = (
+                torch.tensor(pipe.vae.config.latents_mean)
+                .view(1, pipe.vae.config.z_dim, 1, 1, 1)
+                .to(latents.device, latents.dtype)
+            )
+            latents_std = 1.0 / torch.tensor(pipe.vae.config.latents_std).view(1, pipe.vae.config.z_dim, 1, 1, 1).to(
+                latents.device, latents.dtype
+            )
+            latents = latents / latents_std + latents_mean
+            pipe.vae.to(device)
+            decoded_image = pipe.vae.decode(latents.to(device), return_dict=False)[0][:, :, 0]
+            image = pipe.image_processor.postprocess(decoded_image, output_type=output_type)
 
-        # Offload all models
-        pipe.maybe_free_model_hooks()
+            # Offload all models
+            pipe.maybe_free_model_hooks()
 
-    # 生成结果
-    result_image = image[0] if isinstance(image, list) else image
+        # 生成结果
+        result_image = image[0] if isinstance(image, list) else image
     # 保存结果
     result_image = result_image.resize((padded_input_image.size), Image.LANCZOS)
     result_image, _ = crop_and_restore(result_image, meta, resample=Image.LANCZOS)
@@ -1143,11 +1168,13 @@ def parse_args():
                        help="Directory containing model checkpoints")
     p.add_argument("--model_path", type=str, default="/home/v-qinhyang/code/hero_blob/preweight/Qwen/Qwen/Qwen-Image-Edit-2509",
                    help="你的 Qwen-Image-Edit-2509 路径或HF模型名（需为你已修改过的 pipeline 版本）")
-    p.add_argument("--lora_path", type=str, default=None,
+    p.add_argument("--lora_path", type=str, default="/home/v-qinhyang/code/hero_blob/qwenoutput/plain_lora/edit_plus_scut2749_lora_128d_5e-5_16ep.safetensors",
                    help="LoRA 权重路径（如果有的话）")
-    p.add_argument("--input_dir", type=str, default="/home/v-qinhyang/code/hero_blob/DATASET/SynthText/AnyTE_bench/AnyTE-all/complex_background",
+    p.add_argument("--inpaint_pipe", default=False, action='store_true',
+                   help="Inpaint pipe路径（如果有的话）")
+    p.add_argument("--input_dir", type=str, default="/home/v-qinhyang/code/hero_blob/DATASET/SynthText/SCUT-EnsText_test",
                    help="Directory containing test images")
-    p.add_argument("--output_dir", type=str, default="/home/v-qinhyang/code/hero_blob/TESTRESULTS/qwen_baselines/Qwen-Image-Edit2509_rectmask_remove_ours_complex_background",
+    p.add_argument("--output_dir", type=str, default="/home/v-qinhyang/code/hero_blob/TESTRESULTS/qwen_baselines/lora-ft-000",
                    help="Output directory for test results")
     p.add_argument("--guidance_scale", type=float, nargs="+", default=[5.0],
                    help="List of guidance scales to test")

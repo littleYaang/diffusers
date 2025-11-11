@@ -457,7 +457,7 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                 images = [images]
             all_image_latents = []
             for image in images:
-                image = image.to(device="cpu", dtype=dtype)
+                image = image.to(device=device, dtype=dtype)
                 if image.shape[1] != self.latent_channels:
                     image_latents = self._encode_vae_image(image=image, generator=generator)
                 else:
