@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -16,11 +16,8 @@ AuraFlow is inspired by [Stable Diffusion 3](../pipelines/stable_diffusion/stabl
 
 It was developed by the Fal team and more details about it can be found in [this blog post](https://blog.fal.ai/auraflow/).
 
-<Tip>
-
-AuraFlow can be quite expensive to run on consumer hardware devices. However, you can perform a suite of optimizations to run it faster and in a more memory-friendly manner. Check out [this section](https://huggingface.co/blog/sd3#memory-optimizations-for-sd3) for more details.
-
-</Tip>
+> [!TIP]
+> AuraFlow can be quite expensive to run on consumer hardware devices. However, you can perform a suite of optimizations to run it faster and in a more memory-friendly manner. Check out [this section](https://huggingface.co/blog/sd3#memory-optimizations-for-sd3) for more details.
 
 ## Quantization
 
@@ -38,7 +35,7 @@ text_encoder_8bit = T5EncoderModel.from_pretrained(
     "fal/AuraFlow",
     subfolder="text_encoder",
     quantization_config=quant_config,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 )
 
 quant_config = DiffusersBitsAndBytesConfig(load_in_8bit=True)
@@ -46,14 +43,14 @@ transformer_8bit = AuraFlowTransformer2DModel.from_pretrained(
     "fal/AuraFlow",
     subfolder="transformer",
     quantization_config=quant_config,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 )
 
 pipeline = AuraFlowPipeline.from_pretrained(
     "fal/AuraFlow",
     text_encoder=text_encoder_8bit,
     transformer=transformer_8bit,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     device_map="balanced",
 )
 
@@ -75,13 +72,13 @@ from diffusers import (
 transformer = AuraFlowTransformer2DModel.from_single_file(
     "https://huggingface.co/city96/AuraFlow-v0.3-gguf/blob/main/aura_flow_0.3-Q2_K.gguf",
     quantization_config=GGUFQuantizationConfig(compute_dtype=torch.bfloat16),
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
 )
 
 pipeline = AuraFlowPipeline.from_pretrained(
     "fal/AuraFlow-v0.3",
     transformer=transformer,
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
 )
 
 prompt = "a cute pony in a field of flowers"

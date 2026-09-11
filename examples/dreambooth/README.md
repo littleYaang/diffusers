@@ -1,6 +1,6 @@
 # DreamBooth training example
 
-[DreamBooth](https://arxiv.org/abs/2208.12242) is a method to personalize text2image models like stable diffusion given just a few(3~5) images of a subject.
+[DreamBooth](https://huggingface.co/papers/2208.12242) is a method to personalize text2image models like stable diffusion given just a few(3~5) images of a subject.
 The `train_dreambooth.py` script shows how to implement the training procedure and adapt it for stable diffusion.
 
 
@@ -19,8 +19,9 @@ cd diffusers
 pip install -e .
 ```
 
-Then cd in the example folder and run
+Install the requirements in the `examples/dreambooth` folder as shown below.
 ```bash
+cd examples/dreambooth
 pip install -r requirements.txt
 ```
 
@@ -282,7 +283,7 @@ from diffusers import StableDiffusionPipeline
 import torch
 
 model_id = "path-to-your-trained-model"
-pipe = StableDiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
+pipe = StableDiffusionPipeline.from_pretrained(model_id, dtype=torch.float16).to("cuda")
 
 prompt = "A photo of sks dog in a bucket"
 image = pipe(prompt, num_inference_steps=50, guidance_scale=7.5).images[0]
@@ -296,7 +297,7 @@ You can also perform inference from one of the checkpoints saved during the trai
 
 ## Training with Low-Rank Adaptation of Large Language Models (LoRA)
 
-Low-Rank Adaption of Large Language Models was first introduced by Microsoft in [LoRA: Low-Rank Adaptation of Large Language Models](https://arxiv.org/abs/2106.09685) by *Edward J. Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, Weizhu Chen*
+Low-Rank Adaption of Large Language Models was first introduced by Microsoft in [LoRA: Low-Rank Adaptation of Large Language Models](https://huggingface.co/papers/2106.09685) by *Edward J. Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, Weizhu Chen*
 
 In a nutshell, LoRA allows to adapt pretrained models by adding pairs of rank-decomposition matrices to existing weights and **only** training those newly added weights. This has a couple of advantages:
 - Previous pretrained weights are kept frozen so that the model is not prone to [catastrophic forgetting](https://www.pnas.org/doi/10.1073/pnas.1611835114)
@@ -330,7 +331,7 @@ For this example we want to directly store the trained LoRA embeddings on the Hu
 we need to be logged in and add the `--push_to_hub` flag.
 
 ```bash
-huggingface-cli login
+hf auth login
 ```
 
 Now we can start training!
@@ -403,7 +404,7 @@ lora_model_id = "patrickvonplaten/lora_dreambooth_dog_example"
 card = RepoCard.load(lora_model_id)
 base_model_id = card.data.to_dict()["base_model"]
 
-pipe = StableDiffusionPipeline.from_pretrained(base_model_id, torch_dtype=torch.float16)
+pipe = StableDiffusionPipeline.from_pretrained(base_model_id, dtype=torch.float16)
 ...
 ```
 
@@ -419,7 +420,7 @@ lora_model_id = "sayakpaul/dreambooth-text-encoder-test"
 card = RepoCard.load(lora_model_id)
 base_model_id = card.data.to_dict()["base_model"]
 
-pipe = StableDiffusionPipeline.from_pretrained(base_model_id, torch_dtype=torch.float16)
+pipe = StableDiffusionPipeline.from_pretrained(base_model_id, dtype=torch.float16)
 pipe = pipe.to("cuda")
 pipe.load_lora_weights(lora_model_id)
 image = pipe("A picture of a sks dog in a bucket", num_inference_steps=25).images[0]
@@ -437,6 +438,9 @@ Note that the use of [`StableDiffusionLoraLoaderMixin.load_lora_weights`](https:
 * LoRA parameters that have separate identifiers for the UNet and the text encoder such as: [`"sayakpaul/dreambooth"`](https://huggingface.co/sayakpaul/dreambooth).
 
 ## Training with Flax/JAX
+
+> [!WARNING]
+> JAX/Flax support was removed from the `diffusers` library in v0.40.0. These scripts require `diffusers<=0.39.x` to run.
 
 For faster training on TPUs and GPUs you can leverage the flax training example. Follow the instructions above to get the model and dataset before running the script.
 

@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -18,11 +18,8 @@ When you think of diffusion models, text-to-image is usually one of the first th
 
 From a very high level, a diffusion model takes a prompt and some random initial noise, and iteratively removes the noise to construct an image. The *denoising* process is guided by the prompt, and once the denoising process ends after a predetermined number of time steps, the image representation is decoded into an image.
 
-<Tip>
-
-Read the [How does Stable Diffusion work?](https://huggingface.co/blog/stable_diffusion#how-does-stable-diffusion-work) blog post to learn more about how a latent diffusion model works.
-
-</Tip>
+> [!TIP]
+> Read the [How does Stable Diffusion work?](https://huggingface.co/blog/stable_diffusion#how-does-stable-diffusion-work) blog post to learn more about how a latent diffusion model works.
 
 You can generate images from a prompt in 🤗 Diffusers in two steps:
 
@@ -33,8 +30,8 @@ from diffusers import AutoPipelineForText2Image
 import torch
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
-	"stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16"
-).to("cuda")
+	"stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16, variant="fp16"
+).to("cuda")  # or "mps", "xpu", "cpu"
 ```
 
 2. Pass a prompt to the pipeline to generate an image:
@@ -63,8 +60,8 @@ from diffusers import AutoPipelineForText2Image
 import torch
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
-	"stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16"
-).to("cuda")
+	"stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16, variant="fp16"
+).to("cuda")  # or "mps", "xpu", "cpu"
 generator = torch.Generator("cuda").manual_seed(31)
 image = pipeline("Astronaut in a jungle, cold color palette, muted colors, detailed, 8k", generator=generator).images[0]
 image
@@ -72,15 +69,15 @@ image
 
 ### Stable Diffusion XL
 
-SDXL is a much larger version of the previous Stable Diffusion models, and involves a two-stage model process that adds even more details to an image. It also includes some additional *micro-conditionings* to generate high-quality images centered subjects. Take a look at the more comprehensive [SDXL](sdxl) guide to learn more about how to use it. In general, you can use SDXL like:
+SDXL is a much larger version of the previous Stable Diffusion models, and involves a two-stage model process that adds even more details to an image. It also includes some additional *micro-conditionings* to generate high-quality images centered subjects. Take a look at the more comprehensive [SDXL](../api/pipelines/stable_diffusion/stable_diffusion_xl) guide to learn more about how to use it. In general, you can use SDXL like:
 
 ```py
 from diffusers import AutoPipelineForText2Image
 import torch
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
-    "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16, variant="fp16"
-).to("cuda")
+    "stabilityai/stable-diffusion-xl-base-1.0", dtype=torch.float16, variant="fp16"
+).to("cuda")  # or "mps", "xpu", "cpu"
 generator = torch.Generator("cuda").manual_seed(31)
 image = pipeline("Astronaut in a jungle, cold color palette, muted colors, detailed, 8k", generator=generator).images[0]
 image
@@ -97,8 +94,8 @@ from diffusers import AutoPipelineForText2Image
 import torch
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
-	"kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16
-).to("cuda")
+	"kandinsky-community/kandinsky-2-2-decoder", dtype=torch.float16
+).to("cuda")  # or "mps", "xpu", "cpu"
 generator = torch.Generator("cuda").manual_seed(31)
 image = pipeline("Astronaut in a jungle, cold color palette, muted colors, detailed, 8k", generator=generator).images[0]
 image
@@ -116,8 +113,8 @@ from diffusers.utils import load_image
 import torch
 
 controlnet = ControlNetModel.from_pretrained(
-	"lllyasviel/control_v11p_sd15_openpose", torch_dtype=torch.float16, variant="fp16"
-).to("cuda")
+	"lllyasviel/control_v11p_sd15_openpose", dtype=torch.float16, variant="fp16"
+).to("cuda")  # or "mps", "xpu", "cpu"
 pose_image = load_image("https://huggingface.co/lllyasviel/control_v11p_sd15_openpose/resolve/main/images/control.png")
 ```
 
@@ -125,8 +122,8 @@ Pass the `controlnet` to the [`AutoPipelineForText2Image`], and provide the prom
 
 ```py
 pipeline = AutoPipelineForText2Image.from_pretrained(
-	"stable-diffusion-v1-5/stable-diffusion-v1-5", controlnet=controlnet, torch_dtype=torch.float16, variant="fp16"
-).to("cuda")
+	"stable-diffusion-v1-5/stable-diffusion-v1-5", controlnet=controlnet, dtype=torch.float16, variant="fp16"
+).to("cuda")  # or "mps", "xpu", "cpu"
 generator = torch.Generator("cuda").manual_seed(31)
 image = pipeline("Astronaut in a jungle, cold color palette, muted colors, detailed, 8k", image=pose_image, generator=generator).images[0]
 image
@@ -164,8 +161,8 @@ from diffusers import AutoPipelineForText2Image
 import torch
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
-	"stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16"
-).to("cuda")
+	"stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16, variant="fp16"
+).to("cuda")  # or "mps", "xpu", "cpu"
 image = pipeline(
 	"Astronaut in a jungle, cold color palette, muted colors, detailed, 8k", height=768, width=512
 ).images[0]
@@ -176,11 +173,8 @@ image
 	<img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/text2img-hw.png"/>
 </div>
 
-<Tip warning={true}>
-
-Other models may have different default image sizes depending on the image sizes in the training dataset. For example, SDXL's default image size is 1024x1024 and using lower `height` and `width` values may result in lower quality images. Make sure you check the model's API reference first!
-
-</Tip>
+> [!WARNING]
+> Other models may have different default image sizes depending on the image sizes in the training dataset. For example, SDXL's default image size is 1024x1024 and using lower `height` and `width` values may result in lower quality images. Make sure you check the model's API reference first!
 
 ### Guidance scale
 
@@ -191,8 +185,8 @@ from diffusers import AutoPipelineForText2Image
 import torch
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
-	"stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16
-).to("cuda")
+	"stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16
+).to("cuda")  # or "mps", "xpu", "cpu"
 image = pipeline(
 	"Astronaut in a jungle, cold color palette, muted colors, detailed, 8k", guidance_scale=3.5
 ).images[0]
@@ -223,8 +217,8 @@ from diffusers import AutoPipelineForText2Image
 import torch
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
-	"stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16
-).to("cuda")
+	"stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16
+).to("cuda")  # or "mps", "xpu", "cpu"
 image = pipeline(
 	prompt="Astronaut in a jungle, cold color palette, muted colors, detailed, 8k",
 	negative_prompt="ugly, deformed, disfigured, poor details, bad anatomy",
@@ -254,8 +248,8 @@ from diffusers import AutoPipelineForText2Image
 import torch
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
-	"stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16
-).to("cuda")
+	"stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16
+).to("cuda")  # or "mps", "xpu", "cpu"
 generator = torch.Generator(device="cuda").manual_seed(30)
 image = pipeline(
 	"Astronaut in a jungle, cold color palette, muted colors, detailed, 8k",
@@ -272,11 +266,8 @@ There are several ways to exert more control over how an image is generated outs
 
 Prompt weighting is a technique for increasing or decreasing the importance of concepts in a prompt to emphasize or minimize certain features in an image. We recommend using the [Compel](https://github.com/damian0815/compel) library to help you generate the weighted prompt embeddings.
 
-<Tip>
-
-Learn how to create the prompt embeddings in the [Prompt weighting](weighted_prompts) guide. This example focuses on how to use the prompt embeddings in the pipeline.
-
-</Tip>
+> [!TIP]
+> Learn how to create the prompt embeddings in the [Prompt weighting](weighted_prompts) guide. This example focuses on how to use the prompt embeddings in the pipeline.
 
 Once you've created the embeddings, you can pass them to the `prompt_embeds` (and `negative_prompt_embeds` if you're using a negative prompt) parameter in the pipeline.
 
@@ -285,8 +276,8 @@ from diffusers import AutoPipelineForText2Image
 import torch
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
-	"stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16
-).to("cuda")
+	"stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16
+).to("cuda")  # or "mps", "xpu", "cpu"
 image = pipeline(
 	prompt_embeds=prompt_embeds, # generated from Compel
 	negative_prompt_embeds=negative_prompt_embeds, # generated from Compel
@@ -295,7 +286,7 @@ image = pipeline(
 
 ### ControlNet
 
-As you saw in the [ControlNet](#controlnet) section, these models offer a more flexible and accurate way to generate images by incorporating an additional conditioning image input. Each ControlNet model is pretrained on a particular type of conditioning image to generate new images that resemble it. For example, if you take a ControlNet model pretrained on depth maps, you can give the model a depth map as a conditioning input and it'll generate an image that preserves the spatial information in it. This is quicker and easier than specifying the depth information in a prompt. You can even combine multiple conditioning inputs with a [MultiControlNet](controlnet#multicontrolnet)!
+As you saw in the [ControlNet](#controlnet) section, these models offer a more flexible and accurate way to generate images by incorporating an additional conditioning image input. Each ControlNet model is pretrained on a particular type of conditioning image to generate new images that resemble it. For example, if you take a ControlNet model pretrained on depth maps, you can give the model a depth map as a conditioning input and it'll generate an image that preserves the spatial information in it. This is quicker and easier than specifying the depth information in a prompt. You can even combine multiple conditioning inputs with a [Multi-ControlNet](controlnet#multi-controlnet)!
 
 There are many types of conditioning inputs you can use, and 🤗 Diffusers supports ControlNet for Stable Diffusion and SDXL models. Take a look at the more comprehensive [ControlNet](controlnet) guide to learn how you can use these models.
 
@@ -303,14 +294,14 @@ There are many types of conditioning inputs you can use, and 🤗 Diffusers supp
 
 Diffusion models are large, and the iterative nature of denoising an image is computationally expensive and intensive. But this doesn't mean you need access to powerful - or even many - GPUs to use them. There are many optimization techniques for running diffusion models on consumer and free-tier resources. For example, you can load model weights in half-precision to save GPU memory and increase speed or offload the entire model to the GPU to save even more memory.
 
-PyTorch 2.0 also supports a more memory-efficient attention mechanism called [*scaled dot product attention*](../optimization/torch2.0#scaled-dot-product-attention) that is automatically enabled if you're using PyTorch 2.0. You can combine this with [`torch.compile`](https://pytorch.org/tutorials/intermediate/torch_compile_tutorial.html) to speed your code up even more:
+PyTorch 2.0 also supports a more memory-efficient attention mechanism called [*scaled dot product attention*](../optimization/fp16#scaled-dot-product-attention) that is automatically enabled if you're using PyTorch 2.0. You can combine this with [`torch.compile`](https://pytorch.org/tutorials/intermediate/torch_compile_tutorial.html) to speed your code up even more:
 
 ```py
 from diffusers import AutoPipelineForText2Image
 import torch
 
-pipeline = AutoPipelineForText2Image.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16").to("cuda")
+pipeline = AutoPipelineForText2Image.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16, variant="fp16").to("cuda")  # or "mps", "xpu", "cpu"
 pipeline.unet = torch.compile(pipeline.unet, mode="reduce-overhead", fullgraph=True)
 ```
 
-For more tips on how to optimize your code to save memory and speed up inference, read the [Memory and speed](../optimization/fp16) and [Torch 2.0](../optimization/torch2.0) guides.
+For more tips on how to optimize your code to save memory and speed up inference, read the [Accelerate inference](../optimization/fp16) and [Reduce memory usage](../optimization/memory) guides.

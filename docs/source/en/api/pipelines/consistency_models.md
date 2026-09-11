@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -30,10 +30,10 @@ For an additional speed-up, use `torch.compile` to generate multiple images in <
   import torch
   from diffusers import ConsistencyModelPipeline
 
-  device = "cuda"
+  device = "cuda"  # or "mps", "xpu", "cpu"
   # Load the cd_bedroom256_lpips checkpoint.
   model_id_or_path = "openai/diffusers-cd_bedroom256_lpips"
-  pipe = ConsistencyModelPipeline.from_pretrained(model_id_or_path, torch_dtype=torch.float16)
+  pipe = ConsistencyModelPipeline.from_pretrained(model_id_or_path, dtype=torch.float16)
   pipe.to(device)
 
 + pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)

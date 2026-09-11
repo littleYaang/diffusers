@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team, the AllenNLP library authors. All rights reserved.
+# Copyright 2025 The HuggingFace Team, the AllenNLP library authors. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -59,7 +59,7 @@ def main():
                 "This issue has been automatically marked as stale because it has not had "
                 "recent activity. If you think this still needs to be addressed "
                 "please comment on this thread.\n\nPlease note that issues that do not follow the "
-                "[contributing guidelines](https://github.com/huggingface/diffusers/blob/main/CONTRIBUTING.md) "
+                "[contributing guidelines](https://huggingface.co/docs/diffusers/main/en/conceptual/contribution) "
                 "are likely to be ignored."
             )
             issue.add_to_labels("stale")

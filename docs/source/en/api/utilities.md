@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -26,6 +26,10 @@ Utility and helper functions for working with 🤗 Diffusers.
 
 [[autodoc]] utils.load_image
 
+## load_video
+
+[[autodoc]] utils.load_video
+
 ## export_to_gif
 
 [[autodoc]] utils.export_to_gif
@@ -33,6 +37,10 @@ Utility and helper functions for working with 🤗 Diffusers.
 ## export_to_video
 
 [[autodoc]] utils.export_to_video
+
+## encode_video
+
+[[autodoc]] utils.encode_video
 
 ## make_image_grid
 

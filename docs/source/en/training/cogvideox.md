@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -145,10 +145,10 @@ When running `accelerate config`, if you use torch.compile, there can be dramati
 If you would like to push your model to the Hub after training is completed with a neat model card, make sure you're logged in:
 
 ```bash
-huggingface-cli login
+hf auth login
 
 # Alternatively, you could upload your model manually using:
-# huggingface-cli upload my-cool-account-name/my-cool-lora-name /path/to/awesome/lora
+# hf upload my-cool-account-name/my-cool-lora-name /path/to/awesome/lora
 ```
 
 Make sure your data is prepared as described in [Data Preparation](#data-preparation). When ready, you can begin training!
@@ -232,10 +232,10 @@ import torch
 from diffusers import CogVideoXPipeline
 from diffusers.utils import export_to_video
 
-pipe = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-2b", torch_dtype=torch.float16)
+pipe = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-2b", dtype=torch.float16)
 # pipe.load_lora_weights("/path/to/lora/weights", adapter_name="cogvideox-lora") # Or,
 pipe.load_lora_weights("my-awesome-hf-username/my-awesome-lora-name", adapter_name="cogvideox-lora") # If loading from the HF Hub
-pipe.to("cuda")
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 # Assuming lora_alpha=32 and rank=64 for training. If different, set accordingly
 pipe.set_adapters(["cogvideox-lora"], [32 / 64])

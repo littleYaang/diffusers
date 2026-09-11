@@ -1,6 +1,6 @@
 import gc
-import unittest
 
+import pytest
 import torch
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
 
@@ -13,31 +13,35 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.pipelines.stable_diffusion.stable_unclip_image_normalizer import StableUnCLIPImageNormalizer
-from diffusers.utils.testing_utils import enable_full_determinism, load_numpy, nightly, require_torch_gpu, torch_device
 
-from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import (
-    PipelineKarrasSchedulerTesterMixin,
-    PipelineLatentTesterMixin,
+from ...testing_utils import (
+    backend_empty_cache,
+    backend_max_memory_allocated,
+    backend_reset_max_memory_allocated,
+    backend_reset_peak_memory_stats,
+    enable_full_determinism,
+    load_numpy,
+    nightly,
+    require_torch_accelerator,
+    torch_device,
+)
+from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
+from ..test_pipelines_common import assert_mean_pixel_difference
+from ..testing_utils import (
+    BasePipelineTesterConfig,
+    MemoryTesterMixin,
     PipelineTesterMixin,
-    assert_mean_pixel_difference,
 )
 
 
 enable_full_determinism()
 
 
-class StableUnCLIPPipelineFastTests(
-    PipelineLatentTesterMixin, PipelineKarrasSchedulerTesterMixin, PipelineTesterMixin, unittest.TestCase
-):
+class StableUnCLIPPipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = StableUnCLIPPipeline
-    params = TEXT_TO_IMAGE_PARAMS
-    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
-    image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
-    image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
-
-    # TODO(will) Expected attn_bias.stride(1) == 0 to be true, but got false
-    test_xformers_attention = False
+    required_input_params_in_call_signature = TEXT_TO_IMAGE_PARAMS
+    batch_input_params = TEXT_TO_IMAGE_BATCH_PARAMS
+    output_shape = (3, 32, 32)
 
     def get_dummy_components(self):
         embedder_hidden_size = 32
@@ -139,7 +143,7 @@ class StableUnCLIPPipelineFastTests(
         torch.manual_seed(0)
         vae = AutoencoderKL()
 
-        components = {
+        return {
             # prior components
             "prior_tokenizer": prior_tokenizer,
             "prior_text_encoder": prior_text_encoder,
@@ -156,53 +160,44 @@ class StableUnCLIPPipelineFastTests(
             "vae": vae,
         }
 
-        return components
-
-    def get_dummy_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device=device).manual_seed(seed)
-        inputs = {
+    def get_dummy_inputs(self):
+        return {
             "prompt": "A painting of a squirrel eating a burger",
-            "generator": generator,
+            "generator": self.get_generator(0),
             "num_inference_steps": 2,
             "prior_num_inference_steps": 2,
-            "output_type": "np",
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
+            # Note `"pt"` images are `(batch, channels, height, width)`, unlike `"np"` (`(batch, h, w, c)`).
+            "output_type": "pt",
         }
-        return inputs
 
-    # Overriding PipelineTesterMixin::test_attention_slicing_forward_pass
-    # because UnCLIP GPU undeterminism requires a looser check.
-    def test_attention_slicing_forward_pass(self):
-        test_max_difference = torch_device == "cpu"
 
-        self._test_attention_slicing_forward_pass(test_max_difference=test_max_difference)
-
+class TestStableUnCLIPPipeline(StableUnCLIPPipelineTesterConfig, PipelineTesterMixin):
     # Overriding PipelineTesterMixin::test_inference_batch_single_identical
     # because UnCLIP undeterminism requires a looser check.
-    def test_inference_batch_single_identical(self):
-        self._test_inference_batch_single_identical(expected_max_diff=1e-3)
+    def test_inference_batch_single_identical(self, batch_size=3, expected_max_diff=1e-3):
+        super().test_inference_batch_single_identical(batch_size=batch_size, expected_max_diff=expected_max_diff)
 
-    @unittest.skip("Test not supported because of the use of `_encode_prior_prompt()`.")
+    @pytest.mark.skip("Test not supported because of the use of `_encode_prior_prompt()`.")
     def test_encode_prompt_works_in_isolation(self):
         pass
 
 
-@nightly
-@require_torch_gpu
-class StableUnCLIPPipelineIntegrationTests(unittest.TestCase):
-    def setUp(self):
-        # clean up the VRAM before each test
-        super().setUp()
-        gc.collect()
-        torch.cuda.empty_cache()
+class TestStableUnCLIPPipelineMemory(StableUnCLIPPipelineTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the Stable unCLIP pipeline."""
 
-    def tearDown(self):
-        # clean up the VRAM after each test
-        super().tearDown()
+
+@nightly
+@require_torch_accelerator
+class TestStableUnCLIPPipelineIntegration:
+    @pytest.fixture(autouse=True)
+    def cleanup(self):
+        # clean up the VRAM before and after each test
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
+        yield
+        gc.collect()
+        backend_empty_cache(torch_device)
 
     def test_stable_unclip(self):
         expected_image = load_numpy(
@@ -217,7 +212,7 @@ class StableUnCLIPPipelineIntegrationTests(unittest.TestCase):
         pipe.enable_sequential_cpu_offload()
 
         generator = torch.Generator(device="cpu").manual_seed(0)
-        output = pipe("anime turle", generator=generator, output_type="np")
+        output = pipe("anime turtle", generator=generator, output_type="np")
 
         image = output.images[0]
 
@@ -226,9 +221,9 @@ class StableUnCLIPPipelineIntegrationTests(unittest.TestCase):
         assert_mean_pixel_difference(image, expected_image)
 
     def test_stable_unclip_pipeline_with_sequential_cpu_offloading(self):
-        torch.cuda.empty_cache()
-        torch.cuda.reset_max_memory_allocated()
-        torch.cuda.reset_peak_memory_stats()
+        backend_empty_cache(torch_device)
+        backend_reset_max_memory_allocated(torch_device)
+        backend_reset_peak_memory_stats(torch_device)
 
         pipe = StableUnCLIPPipeline.from_pretrained("fusing/stable-unclip-2-1-l", torch_dtype=torch.float16)
         pipe.set_progress_bar_config(disable=None)
@@ -242,6 +237,6 @@ class StableUnCLIPPipelineIntegrationTests(unittest.TestCase):
             output_type="np",
         )
 
-        mem_bytes = torch.cuda.max_memory_allocated()
+        mem_bytes = backend_max_memory_allocated(torch_device)
         # make sure that less than 7 GB is allocated
         assert mem_bytes < 7 * 10**9

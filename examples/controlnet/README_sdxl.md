@@ -58,7 +58,7 @@ wget https://huggingface.co/datasets/huggingface/documentation-images/resolve/ma
 wget https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_training/conditioning_image_2.png
 ```
 
-Then run `huggingface-cli login` to log into your Hugging Face account. This is needed to be able to push the trained ControlNet parameters to Hugging Face Hub.
+Then run `hf auth login` to log into your Hugging Face account. This is needed to be able to push the trained ControlNet parameters to Hugging Face Hub.
 
 ```bash
 export MODEL_DIR="stabilityai/stable-diffusion-xl-base-1.0"
@@ -101,9 +101,9 @@ import torch
 base_model_path = "stabilityai/stable-diffusion-xl-base-1.0"
 controlnet_path = "path to controlnet"
 
-controlnet = ControlNetModel.from_pretrained(controlnet_path, torch_dtype=torch.float16)
+controlnet = ControlNetModel.from_pretrained(controlnet_path, dtype=torch.float16)
 pipe = StableDiffusionXLControlNetPipeline.from_pretrained(
-    base_model_path, controlnet=controlnet, torch_dtype=torch.float16
+    base_model_path, controlnet=controlnet, dtype=torch.float16
 )
 
 # speed up diffusion process with faster scheduler and memory optimization
@@ -133,9 +133,9 @@ SDXL's VAE is known to suffer from numerical instability issues. This is why we 
 If you're using this VAE during training, you need to ensure you're using it during inference too. You do so by:
 
 ```diff
-+ vae = AutoencoderKL.from_pretrained(vae_path_or_repo_id, torch_dtype=torch.float16)
-controlnet = ControlNetModel.from_pretrained(controlnet_path, torch_dtype=torch.float16)
++ vae = AutoencoderKL.from_pretrained(vae_path_or_repo_id, dtype=torch.float16)
+controlnet = ControlNetModel.from_pretrained(controlnet_path, dtype=torch.float16)
 pipe = StableDiffusionXLControlNetPipeline.from_pretrained(
-    base_model_path, controlnet=controlnet, torch_dtype=torch.float16,
+    base_model_path, controlnet=controlnet, dtype=torch.float16,
 +   vae=vae,
 )

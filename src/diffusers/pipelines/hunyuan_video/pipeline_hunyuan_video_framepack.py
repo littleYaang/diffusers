@@ -14,7 +14,8 @@
 
 import inspect
 import math
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from enum import Enum
+from typing import Any, Callable
 
 import numpy as np
 import torch
@@ -91,6 +92,7 @@ EXAMPLE_DOC_STRING = """
         ...     num_inference_steps=30,
         ...     guidance_scale=9.0,
         ...     generator=torch.Generator().manual_seed(0),
+        ...     sampling_type="inverted_anti_drifting",
         ... ).frames[0]
         >>> export_to_video(output, "output.mp4", fps=30)
         ```
@@ -138,6 +140,7 @@ EXAMPLE_DOC_STRING = """
         ...     num_inference_steps=30,
         ...     guidance_scale=9.0,
         ...     generator=torch.Generator().manual_seed(0),
+        ...     sampling_type="inverted_anti_drifting",
         ... ).frames[0]
         >>> export_to_video(output, "output.mp4", fps=30)
         ```
@@ -175,10 +178,10 @@ def calculate_shift(
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(
     scheduler,
-    num_inference_steps: Optional[int] = None,
-    device: Optional[Union[str, torch.device]] = None,
-    timesteps: Optional[List[int]] = None,
-    sigmas: Optional[List[float]] = None,
+    num_inference_steps: int | None = None,
+    device: str | torch.device | None = None,
+    timesteps: list[int] | None = None,
+    sigmas: list[float] | None = None,
     **kwargs,
 ):
     r"""
@@ -193,15 +196,15 @@ def retrieve_timesteps(
             must be `None`.
         device (`str` or `torch.device`, *optional*):
             The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
-        timesteps (`List[int]`, *optional*):
+        timesteps (`list[int]`, *optional*):
             Custom timesteps used to override the timestep spacing strategy of the scheduler. If `timesteps` is passed,
             `num_inference_steps` and `sigmas` must be `None`.
-        sigmas (`List[float]`, *optional*):
+        sigmas (`list[float]`, *optional*):
             Custom sigmas used to override the timestep spacing strategy of the scheduler. If `sigmas` is passed,
             `num_inference_steps` and `timesteps` must be `None`.
 
     Returns:
-        `Tuple[torch.Tensor, int]`: A tuple where the first element is the timestep schedule from the scheduler and the
+        `tuple[torch.Tensor, int]`: A tuple where the first element is the timestep schedule from the scheduler and the
         second element is the number of inference steps.
     """
     if timesteps is not None and sigmas is not None:
@@ -230,6 +233,11 @@ def retrieve_timesteps(
         scheduler.set_timesteps(num_inference_steps, device=device, **kwargs)
         timesteps = scheduler.timesteps
     return timesteps, num_inference_steps
+
+
+class FramepackSamplingType(str, Enum):
+    VANILLA = "vanilla"
+    INVERTED_ANTI_DRIFTING = "inverted_anti_drifting"
 
 
 class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMixin):
@@ -294,14 +302,14 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
     # Copied from diffusers.pipelines.hunyuan_video.pipeline_hunyuan_video.HunyuanVideoPipeline._get_llama_prompt_embeds
     def _get_llama_prompt_embeds(
         self,
-        prompt: Union[str, List[str]],
-        prompt_template: Dict[str, Any],
+        prompt: str | list[str],
+        prompt_template: dict[str, Any],
         num_videos_per_prompt: int = 1,
-        device: Optional[torch.device] = None,
-        dtype: Optional[torch.dtype] = None,
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
         max_sequence_length: int = 256,
         num_hidden_layers_to_skip: int = 2,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         device = device or self._execution_device
         dtype = dtype or self.text_encoder.dtype
 
@@ -361,10 +369,10 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
     # Copied from diffusers.pipelines.hunyuan_video.pipeline_hunyuan_video.HunyuanVideoPipeline._get_clip_prompt_embeds
     def _get_clip_prompt_embeds(
         self,
-        prompt: Union[str, List[str]],
+        prompt: str | list[str],
         num_videos_per_prompt: int = 1,
-        device: Optional[torch.device] = None,
-        dtype: Optional[torch.dtype] = None,
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
         max_sequence_length: int = 77,
     ) -> torch.Tensor:
         device = device or self._execution_device
@@ -401,15 +409,15 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
     # Copied from diffusers.pipelines.hunyuan_video.pipeline_hunyuan_video.HunyuanVideoPipeline.encode_prompt
     def encode_prompt(
         self,
-        prompt: Union[str, List[str]],
-        prompt_2: Union[str, List[str]] = None,
-        prompt_template: Dict[str, Any] = DEFAULT_PROMPT_TEMPLATE,
+        prompt: str | list[str],
+        prompt_2: str | list[str] = None,
+        prompt_template: dict[str, Any] = DEFAULT_PROMPT_TEMPLATE,
         num_videos_per_prompt: int = 1,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        pooled_prompt_embeds: Optional[torch.Tensor] = None,
-        prompt_attention_mask: Optional[torch.Tensor] = None,
-        device: Optional[torch.device] = None,
-        dtype: Optional[torch.dtype] = None,
+        prompt_embeds: torch.Tensor | None = None,
+        pooled_prompt_embeds: torch.Tensor | None = None,
+        prompt_attention_mask: torch.Tensor | None = None,
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
         max_sequence_length: int = 256,
     ):
         if prompt_embeds is None:
@@ -435,9 +443,7 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
 
         return prompt_embeds, pooled_prompt_embeds, prompt_attention_mask
 
-    def encode_image(
-        self, image: torch.Tensor, device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None
-    ):
+    def encode_image(self, image: torch.Tensor, device: torch.device | None = None, dtype: torch.dtype | None = None):
         device = device or self._execution_device
         image = (image + 1) / 2.0  # [-1, 1] -> [0, 1]
         image = self.feature_extractor(images=image, return_tensors="pt", do_rescale=False).to(
@@ -455,6 +461,11 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
         prompt_embeds=None,
         callback_on_step_end_tensor_inputs=None,
         prompt_template=None,
+        image=None,
+        image_latents=None,
+        last_image=None,
+        last_image_latents=None,
+        sampling_type=None,
     ):
         if height % 16 != 0 or width % 16 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 16 but are {height} and {width}.")
@@ -493,6 +504,21 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
                     f"`prompt_template` has to contain a key `template` but only found {prompt_template.keys()}"
                 )
 
+        sampling_types = [x.value for x in FramepackSamplingType.__members__.values()]
+        if sampling_type not in sampling_types:
+            raise ValueError(f"`sampling_type` has to be one of '{sampling_types}' but is '{sampling_type}'")
+
+        if image is not None and image_latents is not None:
+            raise ValueError("Only one of `image` or `image_latents` can be passed.")
+        if last_image is not None and last_image_latents is not None:
+            raise ValueError("Only one of `last_image` or `last_image_latents` can be passed.")
+        if sampling_type != FramepackSamplingType.INVERTED_ANTI_DRIFTING and (
+            last_image is not None or last_image_latents is not None
+        ):
+            raise ValueError(
+                'Only `"inverted_anti_drifting"` inference type supports `last_image` or `last_image_latents`.'
+            )
+
     def prepare_latents(
         self,
         batch_size: int = 1,
@@ -500,10 +526,10 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
         height: int = 720,
         width: int = 1280,
         num_frames: int = 129,
-        dtype: Optional[torch.dtype] = None,
-        device: Optional[torch.device] = None,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.Tensor] = None,
+        dtype: torch.dtype | None = None,
+        device: torch.device | None = None,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
     ) -> torch.Tensor:
         if latents is not None:
             return latents.to(device=device, dtype=dtype)
@@ -525,10 +551,10 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
     def prepare_image_latents(
         self,
         image: torch.Tensor,
-        dtype: Optional[torch.dtype] = None,
-        device: Optional[torch.device] = None,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.Tensor] = None,
+        dtype: torch.dtype | None = None,
+        device: torch.device | None = None,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
     ) -> torch.Tensor:
         device = device or self._execution_device
         if latents is None:
@@ -536,35 +562,6 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
             latents = self.vae.encode(image).latent_dist.sample(generator=generator)
             latents = latents * self.vae.config.scaling_factor
         return latents.to(device=device, dtype=dtype)
-
-    def enable_vae_slicing(self):
-        r"""
-        Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
-        compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
-        """
-        self.vae.enable_slicing()
-
-    def disable_vae_slicing(self):
-        r"""
-        Disable sliced VAE decoding. If `enable_vae_slicing` was previously enabled, this method will go back to
-        computing decoding in one step.
-        """
-        self.vae.disable_slicing()
-
-    def enable_vae_tiling(self):
-        r"""
-        Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
-        compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
-        processing larger images.
-        """
-        self.vae.enable_tiling()
-
-    def disable_vae_tiling(self):
-        r"""
-        Disable tiled VAE decoding. If `enable_vae_tiling` was previously enabled, this method will go back to
-        computing decoding in one step.
-        """
-        self.vae.disable_tiling()
 
     @property
     def guidance_scale(self):
@@ -591,38 +588,37 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
     def __call__(
         self,
         image: PipelineImageInput,
-        last_image: Optional[PipelineImageInput] = None,
-        prompt: Union[str, List[str]] = None,
-        prompt_2: Union[str, List[str]] = None,
-        negative_prompt: Union[str, List[str]] = None,
-        negative_prompt_2: Union[str, List[str]] = None,
+        last_image: PipelineImageInput | None = None,
+        prompt: str | list[str] = None,
+        prompt_2: str | list[str] = None,
+        negative_prompt: str | list[str] = None,
+        negative_prompt_2: str | list[str] = None,
         height: int = 720,
         width: int = 1280,
         num_frames: int = 129,
         latent_window_size: int = 9,
         num_inference_steps: int = 50,
-        sigmas: List[float] = None,
+        sigmas: list[float] = None,
         true_cfg_scale: float = 1.0,
         guidance_scale: float = 6.0,
-        num_videos_per_prompt: Optional[int] = 1,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        image_latents: Optional[torch.Tensor] = None,
-        last_image_latents: Optional[torch.Tensor] = None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        pooled_prompt_embeds: Optional[torch.Tensor] = None,
-        prompt_attention_mask: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        negative_pooled_prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_attention_mask: Optional[torch.Tensor] = None,
-        output_type: Optional[str] = "pil",
+        num_videos_per_prompt: int | None = 1,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        image_latents: torch.Tensor | None = None,
+        last_image_latents: torch.Tensor | None = None,
+        prompt_embeds: torch.Tensor | None = None,
+        pooled_prompt_embeds: torch.Tensor | None = None,
+        prompt_attention_mask: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        negative_pooled_prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_attention_mask: torch.Tensor | None = None,
+        output_type: str | None = "pil",
         return_dict: bool = True,
-        attention_kwargs: Optional[Dict[str, Any]] = None,
-        callback_on_step_end: Optional[
-            Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
-        ] = None,
-        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
-        prompt_template: Dict[str, Any] = DEFAULT_PROMPT_TEMPLATE,
+        attention_kwargs: dict[str, Any] | None = None,
+        callback_on_step_end: Callable[[int, int], None] | PipelineCallback | MultiPipelineCallbacks | None = None,
+        callback_on_step_end_tensor_inputs: list[str] = ["latents"],
+        prompt_template: dict[str, Any] = DEFAULT_PROMPT_TEMPLATE,
         max_sequence_length: int = 256,
+        sampling_type: FramepackSamplingType = FramepackSamplingType.INVERTED_ANTI_DRIFTING,
     ):
         r"""
         The call function to the pipeline for generation.
@@ -633,17 +629,17 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
             last_image (`PIL.Image.Image` or `np.ndarray` or `torch.Tensor`, *optional*):
                 The optional last image to be used as the ending point for the video generation. This is useful for
                 generating transitions between two images.
-            prompt (`str` or `List[str]`, *optional*):
+            prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
-            prompt_2 (`str` or `List[str]`, *optional*):
+            prompt_2 (`str` or `list[str]`, *optional*):
                 The prompt or prompts to be sent to `tokenizer_2` and `text_encoder_2`. If not defined, `prompt` is
                 will be used instead.
-            negative_prompt (`str` or `List[str]`, *optional*):
+            negative_prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `true_cfg_scale` is
                 not greater than `1`).
-            negative_prompt_2 (`str` or `List[str]`, *optional*):
+            negative_prompt_2 (`str` or `list[str]`, *optional*):
                 The prompt or prompts not to guide the image generation to be sent to `tokenizer_2` and
                 `text_encoder_2`. If not defined, `negative_prompt` is used in all the text-encoders.
             height (`int`, defaults to `720`):
@@ -652,26 +648,28 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
                 The width in pixels of the generated image.
             num_frames (`int`, defaults to `129`):
                 The number of frames in the generated video.
+            latent_window_size (`int`, defaults to `9`):
+                Number of latent frames produced per Framepack sampling window.
             num_inference_steps (`int`, defaults to `50`):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
-            sigmas (`List[float]`, *optional*):
+            sigmas (`list[float]`, *optional*):
                 Custom sigmas to use for the denoising process with schedulers which support a `sigmas` argument in
                 their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is passed
                 will be used.
             true_cfg_scale (`float`, *optional*, defaults to 1.0):
                 When > 1.0 and a provided `negative_prompt`, enables true classifier-free guidance.
             guidance_scale (`float`, defaults to `6.0`):
-                Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
-                `guidance_scale` is defined as `w` of equation 2. of [Imagen
-                Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
-                1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
-                usually at the expense of lower image quality. Note that the only available HunyuanVideo model is
-                CFG-distilled, which means that traditional guidance between unconditional and conditional latent is
-                not applied.
+                Guidance scale as defined in [Classifier-Free Diffusion
+                Guidance](https://huggingface.co/papers/2207.12598). `guidance_scale` is defined as `w` of equation 2.
+                of [Imagen Paper](https://huggingface.co/papers/2205.11487). Guidance scale is enabled by setting
+                `guidance_scale > 1`. Higher guidance scale encourages to generate images that are closely linked to
+                the text `prompt`, usually at the expense of lower image quality. Note that the only available
+                HunyuanVideo model is CFG-distilled, which means that traditional guidance between unconditional and
+                conditional latent is not applied.
             num_videos_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
-            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+            generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
                 generation deterministic.
             image_latents (`torch.Tensor`, *optional*):
@@ -692,6 +690,10 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
                 Pre-generated negative pooled text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, pooled negative_prompt_embeds will be generated from `negative_prompt`
                 input argument.
+            prompt_attention_mask (`torch.Tensor`, *optional*):
+                Attention mask for `prompt_embeds`. Required when `prompt_embeds` is passed directly.
+            negative_prompt_attention_mask (`torch.Tensor`, *optional*):
+                Attention mask for `negative_prompt_embeds`. Required when `negative_prompt_embeds` is passed directly.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generated image. Choose between `PIL.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
@@ -700,15 +702,18 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
                 [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
-            clip_skip (`int`, *optional*):
-                Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
-                the output of the pre-final layer will be used for computing the prompt embeddings.
+            prompt_template (`dict`, *optional*):
+                Template used to format the prompt before encoding. Defaults to the model's default template.
+            max_sequence_length (`int`, *optional*, defaults to 256):
+                Maximum sequence length to use for the prompt encoder.
+            sampling_type (`FramepackSamplingType`, *optional*):
+                The Framepack sampling strategy to use when iterating over latent windows.
             callback_on_step_end (`Callable`, `PipelineCallback`, `MultiPipelineCallbacks`, *optional*):
                 A function or a subclass of `PipelineCallback` or `MultiPipelineCallbacks` that is called at the end of
                 each denoising step during the inference. with the following arguments: `callback_on_step_end(self:
                 DiffusionPipeline, step: int, timestep: int, callback_kwargs: Dict)`. `callback_kwargs` will include a
                 list of all tensors as specified by `callback_on_step_end_tensor_inputs`.
-            callback_on_step_end_tensor_inputs (`List`, *optional*):
+            callback_on_step_end_tensor_inputs (`list`, *optional*):
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeline class.
@@ -735,6 +740,11 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
             prompt_embeds,
             callback_on_step_end_tensor_inputs,
             prompt_template,
+            image,
+            image_latents,
+            last_image,
+            last_image_latents,
+            sampling_type,
         )
 
         has_neg_prompt = negative_prompt is not None or (
@@ -806,18 +816,6 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
         num_channels_latents = self.transformer.config.in_channels
         window_num_frames = (latent_window_size - 1) * self.vae_scale_factor_temporal + 1
         num_latent_sections = max(1, (num_frames + window_num_frames - 1) // window_num_frames)
-        # Specific to the released checkpoint: https://huggingface.co/lllyasviel/FramePackI2V_HY
-        # TODO: find a more generic way in future if there are more checkpoints
-        history_sizes = [1, 2, 16]
-        history_latents = torch.zeros(
-            batch_size,
-            num_channels_latents,
-            sum(history_sizes),
-            height // self.vae_scale_factor_spatial,
-            width // self.vae_scale_factor_spatial,
-            device=device,
-            dtype=torch.float32,
-        )
         history_video = None
         total_generated_latent_frames = 0
 
@@ -829,38 +827,92 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
                 last_image, dtype=torch.float32, device=device, generator=generator
             )
 
-        latent_paddings = list(reversed(range(num_latent_sections)))
-        if num_latent_sections > 4:
-            latent_paddings = [3] + [2] * (num_latent_sections - 3) + [1, 0]
+        # Specific to the released checkpoints:
+        #   - https://huggingface.co/lllyasviel/FramePackI2V_HY
+        #   - https://huggingface.co/lllyasviel/FramePack_F1_I2V_HY_20250503
+        # TODO: find a more generic way in future if there are more checkpoints
+        if sampling_type == FramepackSamplingType.INVERTED_ANTI_DRIFTING:
+            history_sizes = [1, 2, 16]
+            history_latents = torch.zeros(
+                batch_size,
+                num_channels_latents,
+                sum(history_sizes),
+                height // self.vae_scale_factor_spatial,
+                width // self.vae_scale_factor_spatial,
+                device=device,
+                dtype=torch.float32,
+            )
+
+        elif sampling_type == FramepackSamplingType.VANILLA:
+            history_sizes = [16, 2, 1]
+            history_latents = torch.zeros(
+                batch_size,
+                num_channels_latents,
+                sum(history_sizes),
+                height // self.vae_scale_factor_spatial,
+                width // self.vae_scale_factor_spatial,
+                device=device,
+                dtype=torch.float32,
+            )
+            history_latents = torch.cat([history_latents, image_latents], dim=2)
+            total_generated_latent_frames += 1
+
+        else:
+            assert False
 
         # 6. Prepare guidance condition
         guidance = torch.tensor([guidance_scale] * batch_size, dtype=transformer_dtype, device=device) * 1000.0
 
         # 7. Denoising loop
         for k in range(num_latent_sections):
-            is_first_section = k == 0
-            is_last_section = k == num_latent_sections - 1
-            latent_padding_size = latent_paddings[k] * latent_window_size
+            if sampling_type == FramepackSamplingType.INVERTED_ANTI_DRIFTING:
+                latent_paddings = list(reversed(range(num_latent_sections)))
+                if num_latent_sections > 4:
+                    latent_paddings = [3] + [2] * (num_latent_sections - 3) + [1, 0]
 
-            indices = torch.arange(0, sum([1, latent_padding_size, latent_window_size, *history_sizes]))
-            (
-                indices_prefix,
-                indices_padding,
-                indices_latents,
-                indices_postfix,
-                indices_latents_history_2x,
-                indices_latents_history_4x,
-            ) = indices.split([1, latent_padding_size, latent_window_size, *history_sizes], dim=0)
-            # Inverted anti-drifting sampling: Figure 2(c) in the paper
-            indices_clean_latents = torch.cat([indices_prefix, indices_postfix], dim=0)
+                is_first_section = k == 0
+                is_last_section = k == num_latent_sections - 1
+                latent_padding_size = latent_paddings[k] * latent_window_size
 
-            latents_prefix = image_latents
-            latents_postfix, latents_history_2x, latents_history_4x = history_latents[
-                :, :, : sum(history_sizes)
-            ].split(history_sizes, dim=2)
-            if last_image is not None and is_first_section:
-                latents_postfix = last_image_latents
-            latents_clean = torch.cat([latents_prefix, latents_postfix], dim=2)
+                indices = torch.arange(0, sum([1, latent_padding_size, latent_window_size, *history_sizes]))
+                (
+                    indices_prefix,
+                    indices_padding,
+                    indices_latents,
+                    indices_latents_history_1x,
+                    indices_latents_history_2x,
+                    indices_latents_history_4x,
+                ) = indices.split([1, latent_padding_size, latent_window_size, *history_sizes], dim=0)
+                # Inverted anti-drifting sampling: Figure 2(c) in the paper
+                indices_clean_latents = torch.cat([indices_prefix, indices_latents_history_1x], dim=0)
+
+                latents_prefix = image_latents
+                latents_history_1x, latents_history_2x, latents_history_4x = history_latents[
+                    :, :, : sum(history_sizes)
+                ].split(history_sizes, dim=2)
+                if last_image is not None and is_first_section:
+                    latents_history_1x = last_image_latents
+                latents_clean = torch.cat([latents_prefix, latents_history_1x], dim=2)
+
+            elif sampling_type == FramepackSamplingType.VANILLA:
+                indices = torch.arange(0, sum([1, *history_sizes, latent_window_size]))
+                (
+                    indices_prefix,
+                    indices_latents_history_4x,
+                    indices_latents_history_2x,
+                    indices_latents_history_1x,
+                    indices_latents,
+                ) = indices.split([1, *history_sizes, latent_window_size], dim=0)
+                indices_clean_latents = torch.cat([indices_prefix, indices_latents_history_1x], dim=0)
+
+                latents_prefix = image_latents
+                latents_history_4x, latents_history_2x, latents_history_1x = history_latents[
+                    :, :, -sum(history_sizes) :
+                ].split(history_sizes, dim=2)
+                latents_clean = torch.cat([latents_prefix, latents_history_1x], dim=2)
+
+            else:
+                assert False
 
             latents = self.prepare_latents(
                 batch_size,
@@ -960,13 +1012,26 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
                     if XLA_AVAILABLE:
                         xm.mark_step()
 
-                if is_last_section:
-                    latents = torch.cat([image_latents, latents], dim=2)
+                if sampling_type == FramepackSamplingType.INVERTED_ANTI_DRIFTING:
+                    if is_last_section:
+                        latents = torch.cat([image_latents, latents], dim=2)
+                    total_generated_latent_frames += latents.shape[2]
+                    history_latents = torch.cat([latents, history_latents], dim=2)
+                    real_history_latents = history_latents[:, :, :total_generated_latent_frames]
+                    section_latent_frames = (
+                        (latent_window_size * 2 + 1) if is_last_section else (latent_window_size * 2)
+                    )
+                    index_slice = (slice(None), slice(None), slice(0, section_latent_frames))
 
-                total_generated_latent_frames += latents.shape[2]
-                history_latents = torch.cat([latents, history_latents], dim=2)
+                elif sampling_type == FramepackSamplingType.VANILLA:
+                    total_generated_latent_frames += latents.shape[2]
+                    history_latents = torch.cat([history_latents, latents], dim=2)
+                    real_history_latents = history_latents[:, :, -total_generated_latent_frames:]
+                    section_latent_frames = latent_window_size * 2
+                    index_slice = (slice(None), slice(None), slice(-section_latent_frames, None))
 
-                real_history_latents = history_latents[:, :, :total_generated_latent_frames]
+                else:
+                    assert False
 
                 if history_video is None:
                     if not output_type == "latent":
@@ -976,16 +1041,18 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
                         history_video = [real_history_latents]
                 else:
                     if not output_type == "latent":
-                        section_latent_frames = (
-                            (latent_window_size * 2 + 1) if is_last_section else (latent_window_size * 2)
-                        )
                         overlapped_frames = (latent_window_size - 1) * self.vae_scale_factor_temporal + 1
                         current_latents = (
-                            real_history_latents[:, :, :section_latent_frames].to(vae_dtype)
-                            / self.vae.config.scaling_factor
+                            real_history_latents[index_slice].to(vae_dtype) / self.vae.config.scaling_factor
                         )
                         current_video = self.vae.decode(current_latents, return_dict=False)[0]
-                        history_video = self._soft_append(current_video, history_video, overlapped_frames)
+
+                        if sampling_type == FramepackSamplingType.INVERTED_ANTI_DRIFTING:
+                            history_video = self._soft_append(current_video, history_video, overlapped_frames)
+                        elif sampling_type == FramepackSamplingType.VANILLA:
+                            history_video = self._soft_append(history_video, current_video, overlapped_frames)
+                        else:
+                            assert False
                     else:
                         history_video.append(real_history_latents)
 

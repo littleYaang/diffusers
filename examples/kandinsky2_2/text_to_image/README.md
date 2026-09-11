@@ -41,7 +41,7 @@ For all our examples, we will directly store the trained weights on the Hub, so 
 Run the following command to authenticate your token
 
 ```bash
-huggingface-cli login
+hf auth login
 ```
 
 We also use [Weights and Biases](https://docs.wandb.ai/quickstart) logging by default, because it is really useful to monitor the training progress by regularly generating sample images during training. To install wandb, run
@@ -108,7 +108,7 @@ Once the training is finished the model will be saved in the `output_dir` specif
 from diffusers import AutoPipelineForText2Image
 import torch
 
-pipe = AutoPipelineForText2Image.from_pretrained(output_dir, torch_dtype=torch.float16)
+pipe = AutoPipelineForText2Image.from_pretrained(output_dir, dtype=torch.float16)
 pipe.enable_model_cpu_offload()
 
 prompt='A robot naruto, 4k photo'
@@ -124,7 +124,7 @@ model_path = "path_to_saved_model"
 
 unet = UNet2DConditionModel.from_pretrained(model_path + "/checkpoint-<N>/unet")
 
-pipe = AutoPipelineForText2Image.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", unet=unet, torch_dtype=torch.float16)
+pipe = AutoPipelineForText2Image.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", unet=unet, dtype=torch.float16)
 pipe.enable_model_cpu_offload()
 
 image = pipe(prompt="A robot naruto, 4k photo").images[0]
@@ -165,9 +165,9 @@ To perform inference with the fine-tuned prior model, you will need to first cre
 from diffusers import AutoPipelineForText2Image, DiffusionPipeline
 import torch
 
-pipe_prior = DiffusionPipeline.from_pretrained(output_dir, torch_dtype=torch.float16)
+pipe_prior = DiffusionPipeline.from_pretrained(output_dir, dtype=torch.float16)
 prior_components = {"prior_" + k: v for k,v in pipe_prior.components.items()}
-pipe = AutoPipelineForText2Image.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", **prior_components, torch_dtype=torch.float16)
+pipe = AutoPipelineForText2Image.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", **prior_components, dtype=torch.float16)
 
 pipe.enable_model_cpu_offload()
 prompt='A robot naruto, 4k photo'
@@ -205,14 +205,14 @@ accelerate launch --mixed_precision="fp16" --multi_gpu  train_text_to_image_deco
 
 #### Training with Min-SNR weighting
 
-We support training with the Min-SNR weighting strategy proposed in [Efficient Diffusion Training via Min-SNR Weighting Strategy](https://arxiv.org/abs/2303.09556) which helps achieve faster convergence
+We support training with the Min-SNR weighting strategy proposed in [Efficient Diffusion Training via Min-SNR Weighting Strategy](https://huggingface.co/papers/2303.09556) which helps achieve faster convergence
 by rebalancing the loss. Enable the `--snr_gamma` argument and set it to the recommended
 value of 5.0.
 
 
 ## Training with LoRA
 
-Low-Rank Adaption of Large Language Models was first introduced by Microsoft in [LoRA: Low-Rank Adaptation of Large Language Models](https://arxiv.org/abs/2106.09685) by *Edward J. Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, Weizhu Chen*.
+Low-Rank Adaption of Large Language Models was first introduced by Microsoft in [LoRA: Low-Rank Adaptation of Large Language Models](https://huggingface.co/papers/2106.09685) by *Edward J. Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, Weizhu Chen*.
 
 In a nutshell, LoRA allows adapting pretrained models by adding pairs of rank-decomposition matrices to existing weights and **only** training those newly added weights. This has a couple of advantages:
 
@@ -281,7 +281,7 @@ Once you have trained a Kandinsky decoder model using the above command, inferen
 from diffusers import AutoPipelineForText2Image
 import torch
 
-pipe = AutoPipelineForText2Image.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16)
+pipe = AutoPipelineForText2Image.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", dtype=torch.float16)
 pipe.unet.load_attn_procs(output_dir)
 pipe.enable_model_cpu_offload()
 
@@ -296,7 +296,7 @@ image.save("robot_naruto.png")
 from diffusers import AutoPipelineForText2Image
 import torch
 
-pipe = AutoPipelineForText2Image.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16)
+pipe = AutoPipelineForText2Image.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", dtype=torch.float16)
 pipe.prior_prior.load_attn_procs(output_dir)
 pipe.enable_model_cpu_offload()
 

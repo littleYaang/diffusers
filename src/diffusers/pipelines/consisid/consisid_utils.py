@@ -5,10 +5,13 @@ import cv2
 import numpy as np
 import torch
 from PIL import Image, ImageOps
-from torchvision.transforms import InterpolationMode
-from torchvision.transforms.functional import normalize, resize
 
-from ...utils import get_logger, load_image
+from ...utils import get_logger, is_torchvision_available, load_image
+
+
+if is_torchvision_available():
+    from torchvision.transforms import InterpolationMode
+    from torchvision.transforms.functional import normalize, resize
 
 
 logger = get_logger(__name__)
@@ -135,7 +138,7 @@ def process_face_embeddings(
         is_align_face: Boolean flag indicating whether face alignment should be performed.
 
     Returns:
-        Tuple:
+        tuple:
             - id_cond: Concatenated tensor of Ante face embedding and CLIP vision embedding
             - id_vit_hidden: Hidden state of the CLIP vision model, a list of tensors.
             - return_face_features_image_2: Processed face features image after normalization and parsing.
@@ -166,7 +169,7 @@ def process_face_embeddings(
         raise RuntimeError("facexlib align face fail")
     align_face = face_helper_1.cropped_faces[0]  # (512, 512, 3)  # RGB
 
-    # incase insightface didn't detect face
+    # in case insightface didn't detect face
     if id_ante_embedding is None:
         logger.warning("Failed to detect face using insightface. Extracting embedding with align face")
         id_ante_embedding = face_helper_2.get_feat(align_face)
@@ -245,7 +248,7 @@ def process_face_embeddings_infer(
         is_align_face: Boolean flag indicating whether face alignment should be performed (default: True).
 
     Returns:
-        Tuple:
+        tuple:
             - id_cond: Concatenated tensor of Ante face embedding and CLIP vision embedding.
             - id_vit_hidden: Hidden state of the CLIP vision model, a list of tensors.
             - image: Processed face image after feature extraction and alignment.
@@ -294,7 +297,7 @@ def prepare_face_models(model_path, device, dtype):
 
     Parameters:
     - model_path: Path to the directory containing model files.
-    - device: The device (e.g., 'cuda', 'cpu') where models will be loaded.
+    - device: The device (e.g., 'cuda', 'xpu', 'cpu') where models will be loaded.
     - dtype: Data type (e.g., torch.float32) for model inference.
 
     Returns:

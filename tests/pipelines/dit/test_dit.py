@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,35 +14,41 @@
 # limitations under the License.
 
 import gc
-import unittest
 
 import numpy as np
+import pytest
 import torch
 
 from diffusers import AutoencoderKL, DDIMScheduler, DiTPipeline, DiTTransformer2DModel, DPMSolverMultistepScheduler
-from diffusers.utils import is_xformers_available
-from diffusers.utils.testing_utils import enable_full_determinism, load_numpy, nightly, require_torch_gpu, torch_device
 
+from ...testing_utils import (
+    assert_tensors_close,
+    backend_empty_cache,
+    enable_full_determinism,
+    load_numpy,
+    nightly,
+    numpy_cosine_similarity_distance,
+    require_torch_accelerator,
+    torch_device,
+)
 from ..pipeline_params import (
     CLASS_CONDITIONED_IMAGE_GENERATION_BATCH_PARAMS,
     CLASS_CONDITIONED_IMAGE_GENERATION_PARAMS,
 )
-from ..test_pipelines_common import PipelineTesterMixin
+from ..testing_utils import BasePipelineTesterConfig, MemoryTesterMixin, PipelineTesterMixin
 
 
 enable_full_determinism()
 
 
-class DiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class DiTPipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = DiTPipeline
-    params = CLASS_CONDITIONED_IMAGE_GENERATION_PARAMS
-    required_optional_params = PipelineTesterMixin.required_optional_params - {
-        "latents",
-        "num_images_per_prompt",
-        "callback",
-        "callback_steps",
-    }
-    batch_params = CLASS_CONDITIONED_IMAGE_GENERATION_BATCH_PARAMS
+    required_input_params_in_call_signature = CLASS_CONDITIONED_IMAGE_GENERATION_PARAMS
+    batch_input_params = CLASS_CONDITIONED_IMAGE_GENERATION_BATCH_PARAMS
+    # DiT is class-conditioned and samples its own noise: there is no prompt to repeat
+    # (`num_images_per_prompt`) and no user-suppliable `latents`.
+    optional_input_params = frozenset(["num_inference_steps", "generator", "output_type", "return_dict"])
+    output_shape = (3, 16, 16)
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -62,68 +68,60 @@ class DiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         )
         vae = AutoencoderKL()
         scheduler = DDIMScheduler()
-        components = {"transformer": transformer.eval(), "vae": vae.eval(), "scheduler": scheduler}
-        return components
+        return {"transformer": transformer, "vae": vae, "scheduler": scheduler}
 
-    def get_dummy_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device=device).manual_seed(seed)
-        inputs = {
+    def get_dummy_inputs(self):
+        return {
             "class_labels": [1],
-            "generator": generator,
+            "generator": self.get_generator(0),
             "num_inference_steps": 2,
-            "output_type": "np",
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
+            "output_type": "pt",
         }
-        return inputs
 
+
+class TestDiTPipeline(DiTPipelineTesterConfig, PipelineTesterMixin):
     def test_inference(self):
-        device = "cpu"
+        # Run on CPU: the expected slice below is CPU-specific.
+        pipe = self.get_pipeline()
 
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
+        image = pipe(**self.get_dummy_inputs()).images
+        generated_image = image[0]
+        assert generated_image.shape == self.output_shape
 
-        inputs = self.get_dummy_inputs(device)
-        image = pipe(**inputs).images
-        image_slice = image[0, -3:, -3:, -1]
+        # fmt: off
+        expected_slice = torch.tensor([0.2946, 0.6601, 0.4329, 0.3296, 0.4144, 0.5319, 0.7273, 0.5013, 0.4457])
+        # fmt: on
 
-        self.assertEqual(image.shape, (1, 16, 16, 3))
-        expected_slice = np.array([0.2946, 0.6601, 0.4329, 0.3296, 0.4144, 0.5319, 0.7273, 0.5013, 0.4457])
-        max_diff = np.abs(image_slice.flatten() - expected_slice).max()
-        self.assertLessEqual(max_diff, 1e-3)
+        # `"pt"` images are `(channels, height, width)`, so the trailing-channel corner slice of the old
+        # `"np"` layout is the last channel's bottom-right 3x3 block here.
+        generated_slice = generated_image[-1, -3:, -3:].flatten()
+        assert_tensors_close(generated_slice, expected_slice, atol=1e-3)
 
     def test_inference_batch_single_identical(self):
-        self._test_inference_batch_single_identical(expected_max_diff=1e-3)
+        super().test_inference_batch_single_identical(expected_max_diff=1e-3)
 
-    @unittest.skipIf(
-        torch_device != "cuda" or not is_xformers_available(),
-        reason="XFormers attention is only available with CUDA and `xformers` installed",
-    )
-    def test_xformers_attention_forwardGenerator_pass(self):
-        self._test_xformers_attention_forwardGenerator_pass(expected_max_diff=1e-3)
+
+class TestDiTPipelineMemory(DiTPipelineTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the DiT pipeline."""
 
 
 @nightly
-@require_torch_gpu
-class DiTPipelineIntegrationTests(unittest.TestCase):
-    def setUp(self):
-        super().setUp()
+@require_torch_accelerator
+class TestDiTPipelineIntegration:
+    @pytest.fixture(autouse=True)
+    def cleanup(self):
         gc.collect()
-        torch.cuda.empty_cache()
-
-    def tearDown(self):
-        super().tearDown()
+        backend_empty_cache(torch_device)
+        yield
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def test_dit_256(self):
         generator = torch.manual_seed(0)
 
         pipe = DiTPipeline.from_pretrained("facebook/DiT-XL-2-256")
-        pipe.to("cuda")
+        pipe.to(torch_device)
 
         words = ["vase", "umbrella", "white shark", "white wolf"]
         ids = pipe.get_label_ids(words)
@@ -139,7 +137,7 @@ class DiTPipelineIntegrationTests(unittest.TestCase):
     def test_dit_512(self):
         pipe = DiTPipeline.from_pretrained("facebook/DiT-XL-2-512")
         pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
-        pipe.to("cuda")
+        pipe.to(torch_device)
 
         words = ["vase", "umbrella"]
         ids = pipe.get_label_ids(words)
@@ -152,4 +150,7 @@ class DiTPipelineIntegrationTests(unittest.TestCase):
                 f"https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/dit/{word}_512.npy"
             )
 
-            assert np.abs((expected_image - image).max()) < 1e-1
+            expected_slice = expected_image.flatten()
+            output_slice = image.flatten()
+
+            assert numpy_cosine_similarity_distance(expected_slice, output_slice) < 1e-2

@@ -58,7 +58,7 @@ wget https://huggingface.co/datasets/huggingface/documentation-images/resolve/ma
 wget https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_training/conditioning_image_2.png
 ```
 
-Then run `huggingface-cli login` to log into your Hugging Face account. This is needed to be able to push the trained T2IAdapter parameters to Hugging Face Hub.
+Then run `hf auth login` to log into your Hugging Face account. This is needed to be able to push the trained T2IAdapter parameters to Hugging Face Hub.
 
 ```bash
 export MODEL_DIR="stabilityai/stable-diffusion-xl-base-1.0"
@@ -101,9 +101,9 @@ import torch
 base_model_path = "stabilityai/stable-diffusion-xl-base-1.0"
 adapter_path = "path to adapter"
 
-adapter = T2IAdapter.from_pretrained(adapter_path, torch_dtype=torch.float16)
+adapter = T2IAdapter.from_pretrained(adapter_path, dtype=torch.float16)
 pipe = StableDiffusionXLAdapterPipeline.from_pretrained(
-    base_model_path, adapter=adapter, torch_dtype=torch.float16
+    base_model_path, adapter=adapter, dtype=torch.float16
 )
 
 # speed up diffusion process with faster scheduler and memory optimization

@@ -12,6 +12,25 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
+# limitations under the License.
+
+# /// script
+# dependencies = [
+#     "diffusers @ git+https://github.com/huggingface/diffusers.git",
+#     "torch>=2.0.0",
+#     "accelerate>=0.31.0",
+#     "transformers>=4.41.2",
+#     "ftfy",
+#     "tensorboard",
+#     "Jinja2",
+#     "peft>=0.11.1",
+#     "sentencepiece",
+#     "torchvision",
+#     "datasets",
+#     "bitsandbytes",
+#     "prodigyopt",
+# ]
+# ///
 
 import argparse
 import copy
@@ -55,6 +74,7 @@ from diffusers import (
 )
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import (
+    _collate_lora_metadata,
     _set_state_dict_into_text_encoder,
     cast_training_params,
     compute_density_for_timestep_sampling,
@@ -74,7 +94,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.34.0.dev0")
+check_min_version("0.41.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -430,6 +450,16 @@ def parse_args(input_args=None):
         default=4,
         help=("The dimension of the LoRA update matrices."),
     )
+
+    parser.add_argument(
+        "--lora_alpha",
+        type=int,
+        default=4,
+        help="LoRA alpha to be used for additional scaling.",
+    )
+
+    parser.add_argument("--lora_dropout", type=float, default=0.0, help="Dropout probability for LoRA layers")
+
     parser.add_argument(
         "--with_prior_preservation",
         default=False,
@@ -865,9 +895,8 @@ class TokenEmbeddingsHandler:
                 self.train_ids_t5 = tokenizer.convert_tokens_to_ids(self.inserting_toks)
 
             # random initialization of new tokens
-            embeds = (
-                text_encoder.text_model.embeddings.token_embedding if idx == 0 else text_encoder.encoder.embed_tokens
-            )
+            text_module = text_encoder.text_model if hasattr(text_encoder, "text_model") else text_encoder
+            embeds = text_module.embeddings.token_embedding if idx == 0 else text_encoder.encoder.embed_tokens
             std_token_embedding = embeds.weight.data.std()
 
             logger.info(f"{idx} text encoder's std_token_embedding: {std_token_embedding}")
@@ -875,9 +904,7 @@ class TokenEmbeddingsHandler:
             train_ids = self.train_ids if idx == 0 else self.train_ids_t5
             # if initializer_concept are not provided, token embeddings are initialized randomly
             if args.initializer_concept is None:
-                hidden_size = (
-                    text_encoder.text_model.config.hidden_size if idx == 0 else text_encoder.encoder.config.hidden_size
-                )
+                hidden_size = text_module.config.hidden_size if idx == 0 else text_encoder.encoder.config.hidden_size
                 embeds.weight.data[train_ids] = (
                     torch.randn(len(train_ids), hidden_size).to(device=self.device).to(dtype=self.dtype)
                     * std_token_embedding
@@ -910,7 +937,8 @@ class TokenEmbeddingsHandler:
         idx_to_text_encoder_name = {0: "clip_l", 1: "t5"}
         for idx, text_encoder in enumerate(self.text_encoders):
             train_ids = self.train_ids if idx == 0 else self.train_ids_t5
-            embeds = text_encoder.text_model.embeddings.token_embedding if idx == 0 else text_encoder.shared
+            text_module = text_encoder.text_model if hasattr(text_encoder, "text_model") else text_encoder
+            embeds = text_module.embeddings.token_embedding if idx == 0 else text_encoder.shared
             assert embeds.weight.data.shape[0] == len(self.tokenizers[idx]), "Tokenizers should be the same."
             new_token_embeddings = embeds.weight.data[train_ids]
 
@@ -932,7 +960,8 @@ class TokenEmbeddingsHandler:
     @torch.no_grad()
     def retract_embeddings(self):
         for idx, text_encoder in enumerate(self.text_encoders):
-            embeds = text_encoder.text_model.embeddings.token_embedding if idx == 0 else text_encoder.shared
+            text_module = text_encoder.text_model if hasattr(text_encoder, "text_model") else text_encoder
+            embeds = text_module.embeddings.token_embedding if idx == 0 else text_encoder.shared
             index_no_updates = self.embeddings_settings[f"index_no_updates_{idx}"]
             embeds.weight.data[index_no_updates] = (
                 self.embeddings_settings[f"original_embeddings_{idx}"][index_no_updates]
@@ -960,6 +989,7 @@ class DreamBoothDataset(Dataset):
 
     def __init__(
         self,
+        args,
         instance_data_root,
         instance_prompt,
         class_prompt,
@@ -969,10 +999,8 @@ class DreamBoothDataset(Dataset):
         class_num=None,
         size=1024,
         repeats=1,
-        center_crop=False,
     ):
         self.size = size
-        self.center_crop = center_crop
 
         self.instance_prompt = instance_prompt
         self.custom_instance_prompts = None
@@ -1047,7 +1075,7 @@ class DreamBoothDataset(Dataset):
         if interpolation is None:
             raise ValueError(f"Unsupported interpolation mode {interpolation=}.")
         train_resize = transforms.Resize(size, interpolation=interpolation)
-        train_crop = transforms.CenterCrop(size) if center_crop else transforms.RandomCrop(size)
+        train_crop = transforms.CenterCrop(size) if args.center_crop else transforms.RandomCrop(size)
         train_flip = transforms.RandomHorizontalFlip(p=1.0)
         train_transforms = transforms.Compose(
             [
@@ -1064,11 +1092,11 @@ class DreamBoothDataset(Dataset):
                 # flip
                 image = train_flip(image)
             if args.center_crop:
-                y1 = max(0, int(round((image.height - args.resolution) / 2.0)))
-                x1 = max(0, int(round((image.width - args.resolution) / 2.0)))
+                y1 = max(0, int(round((image.height - self.size) / 2.0)))
+                x1 = max(0, int(round((image.width - self.size) / 2.0)))
                 image = train_crop(image)
             else:
-                y1, x1, h, w = train_crop.get_params(image, (args.resolution, args.resolution))
+                y1, x1, h, w = train_crop.get_params(image, (self.size, self.size))
                 image = crop(image, y1, x1, h, w)
             image = train_transforms(image)
             self.pixel_values.append(image)
@@ -1091,7 +1119,7 @@ class DreamBoothDataset(Dataset):
         self.image_transforms = transforms.Compose(
             [
                 transforms.Resize(size, interpolation=interpolation),
-                transforms.CenterCrop(size) if center_crop else transforms.RandomCrop(size),
+                transforms.CenterCrop(size) if args.center_crop else transforms.RandomCrop(size),
                 transforms.ToTensor(),
                 transforms.Normalize([0.5], [0.5]),
             ]
@@ -1311,7 +1339,7 @@ def main(args):
     if args.report_to == "wandb" and args.hub_token is not None:
         raise ValueError(
             "You cannot use both --report_to=wandb and --hub_token due to a security risk of exposing your token."
-            " Please use `huggingface-cli login` to authenticate with the Hub."
+            " Please use `hf auth login` to authenticate with the Hub."
         )
 
     if torch.backends.mps.is_available() and args.mixed_precision == "bf16":
@@ -1374,6 +1402,7 @@ def main(args):
                 torch_dtype = torch.float16
             elif args.prior_generation_precision == "bf16":
                 torch_dtype = torch.bfloat16
+
             pipeline = FluxPipeline.from_pretrained(
                 args.pretrained_model_name_or_path,
                 torch_dtype=torch_dtype,
@@ -1394,7 +1423,8 @@ def main(args):
             for example in tqdm(
                 sample_dataloader, desc="Generating class images", disable=not accelerator.is_local_main_process
             ):
-                images = pipeline(example["prompt"]).images
+                with torch.autocast(device_type=accelerator.device.type, dtype=torch_dtype):
+                    images = pipeline(prompt=example["prompt"]).images
 
                 for i, image in enumerate(images):
                     hash_image = insecure_hashlib.sha1(image.tobytes()).hexdigest()
@@ -1553,7 +1583,8 @@ def main(args):
     # now we will add new LoRA weights to the attention layers
     transformer_lora_config = LoraConfig(
         r=args.rank,
-        lora_alpha=args.rank,
+        lora_alpha=args.lora_alpha,
+        lora_dropout=args.lora_dropout,
         init_lora_weights="gaussian",
         target_modules=target_modules,
     )
@@ -1561,7 +1592,8 @@ def main(args):
     if args.train_text_encoder:
         text_lora_config = LoraConfig(
             r=args.rank,
-            lora_alpha=args.rank,
+            lora_alpha=args.lora_alpha,
+            lora_dropout=args.lora_dropout,
             init_lora_weights="gaussian",
             target_modules=["q_proj", "k_proj", "v_proj", "out_proj"],
         )
@@ -1577,13 +1609,15 @@ def main(args):
         if accelerator.is_main_process:
             transformer_lora_layers_to_save = None
             text_encoder_one_lora_layers_to_save = None
-
+            modules_to_save = {}
             for model in models:
                 if isinstance(model, type(unwrap_model(transformer))):
                     transformer_lora_layers_to_save = get_peft_model_state_dict(model)
+                    modules_to_save["transformer"] = model
                 elif isinstance(model, type(unwrap_model(text_encoder_one))):
                     if args.train_text_encoder:  # when --train_text_encoder_ti we don't save the layers
                         text_encoder_one_lora_layers_to_save = get_peft_model_state_dict(model)
+                        modules_to_save["text_encoder"] = model
                 elif isinstance(model, type(unwrap_model(text_encoder_two))):
                     pass  # when --train_text_encoder_ti and --enable_t5_ti we don't save the layers
                 else:
@@ -1596,6 +1630,7 @@ def main(args):
                 output_dir,
                 transformer_lora_layers=transformer_lora_layers_to_save,
                 text_encoder_lora_layers=text_encoder_one_lora_layers_to_save,
+                **_collate_lora_metadata(modules_to_save),
             )
         if args.train_text_encoder_ti:
             embedding_handler.save_embeddings(f"{args.output_dir}/{Path(args.output_dir).name}_emb.safetensors")
@@ -1811,6 +1846,7 @@ def main(args):
 
     # Dataset and DataLoaders creation:
     train_dataset = DreamBoothDataset(
+        args=args,
         instance_data_root=args.instance_data_dir,
         instance_prompt=args.instance_prompt,
         train_text_encoder_ti=args.train_text_encoder_ti,
@@ -1820,7 +1856,6 @@ def main(args):
         class_num=args.num_class_images,
         size=args.resolution,
         repeats=args.repeats,
-        center_crop=args.center_crop,
     )
 
     train_dataloader = torch.utils.data.DataLoader(
@@ -2076,7 +2111,8 @@ def main(args):
                 if args.train_text_encoder:
                     text_encoder_one.train()
                     # set top parameter requires_grad = True for gradient checkpointing works
-                    unwrap_model(text_encoder_one).text_model.embeddings.requires_grad_(True)
+                    _te_one = unwrap_model(text_encoder_one)
+                    (_te_one.text_model if hasattr(_te_one, "text_model") else _te_one).embeddings.requires_grad_(True)
                 elif args.train_text_encoder_ti:  # textual inversion / pivotal tuning
                     text_encoder_one.train()
                 if args.enable_t5_ti:
@@ -2354,16 +2390,19 @@ def main(args):
     # Save the lora layers
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
+        modules_to_save = {}
         transformer = unwrap_model(transformer)
         if args.upcast_before_saving:
             transformer.to(torch.float32)
         else:
             transformer = transformer.to(weight_dtype)
         transformer_lora_layers = get_peft_model_state_dict(transformer)
+        modules_to_save["transformer"] = transformer
 
         if args.train_text_encoder:
             text_encoder_one = unwrap_model(text_encoder_one)
             text_encoder_lora_layers = get_peft_model_state_dict(text_encoder_one.to(torch.float32))
+            modules_to_save["text_encoder"] = text_encoder_one
         else:
             text_encoder_lora_layers = None
 
@@ -2372,6 +2411,7 @@ def main(args):
                 save_directory=args.output_dir,
                 transformer_lora_layers=transformer_lora_layers,
                 text_encoder_lora_layers=text_encoder_lora_layers,
+                **_collate_lora_metadata(modules_to_save),
             )
 
         if args.train_text_encoder_ti:

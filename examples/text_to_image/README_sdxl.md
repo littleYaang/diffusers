@@ -88,7 +88,7 @@ from diffusers import DiffusionPipeline
 import torch
 
 model_path = "you-model-id-goes-here" # <-- change this
-pipe = DiffusionPipeline.from_pretrained(model_path, torch_dtype=torch.float16)
+pipe = DiffusionPipeline.from_pretrained(model_path, dtype=torch.float16)
 pipe.to("cuda")
 
 prompt = "A naruto with green eyes and red legs."
@@ -127,7 +127,7 @@ boost.
 
 ## LoRA training example for Stable Diffusion XL (SDXL)
 
-Low-Rank Adaption of Large Language Models was first introduced by Microsoft in [LoRA: Low-Rank Adaptation of Large Language Models](https://arxiv.org/abs/2106.09685) by *Edward J. Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, Weizhu Chen*.
+Low-Rank Adaption of Large Language Models was first introduced by Microsoft in [LoRA: Low-Rank Adaptation of Large Language Models](https://huggingface.co/papers/2106.09685) by *Edward J. Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, Weizhu Chen*.
 
 In a nutshell, LoRA allows adapting pretrained models by adding pairs of rank-decomposition matrices to existing weights and **only** training those newly added weights. This has a couple of advantages:
 
@@ -156,7 +156,7 @@ For this example we want to directly store the trained LoRA embeddings on the Hu
 we need to be logged in and add the `--push_to_hub` flag.
 
 ```bash
-huggingface-cli login
+hf auth login
 ```
 
 Now we can start training!
@@ -275,7 +275,7 @@ from diffusers import DiffusionPipeline
 import torch
 
 model_path = "takuoko/sd-naruto-model-lora-sdxl"
-pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16)
+pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", dtype=torch.float16)
 pipe.to("cuda")
 pipe.load_lora_weights(model_path)
 

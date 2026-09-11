@@ -6,7 +6,7 @@ Project page: https://aigcdesigngroup.github.io/homepage_anytext
 
 > **Note:** Each text line that needs to be generated should be enclosed in double quotes.
 
-For any usage questions, please refer to the [paper](https://arxiv.org/abs/2311.03054).
+For any usage questions, please refer to the [paper](https://huggingface.co/papers/2311.03054).
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/gist/tolgacangoz/b87ec9d2f265b448dd947c9d4a0da389/anytext.ipynb)
 
@@ -23,10 +23,10 @@ from anytext_controlnet import AnyTextControlNetModel
 from diffusers.utils import load_image
 
 
-anytext_controlnet = AnyTextControlNetModel.from_pretrained("tolgacangoz/anytext-controlnet", torch_dtype=torch.float16,
+anytext_controlnet = AnyTextControlNetModel.from_pretrained("tolgacangoz/anytext-controlnet", dtype=torch.float16,
                                                             variant="fp16",)
 pipe = DiffusionPipeline.from_pretrained("tolgacangoz/anytext", font_path="arial-unicode-ms.ttf",
-                                          controlnet=anytext_controlnet, torch_dtype=torch.float16,
+                                          controlnet=anytext_controlnet, dtype=torch.float16,
                                           trust_remote_code=False,  # One needs to give permission to run this pipeline's code
                                           ).to("cuda")
 

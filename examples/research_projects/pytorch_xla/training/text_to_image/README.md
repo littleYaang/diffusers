@@ -80,7 +80,7 @@ pip3 install .'
 Run the following command to authenticate your token.
 
 ```bash
-huggingface-cli login
+hf auth login
 ```
 
 This script only trains the unet part of the network. The VAE and text encoder
@@ -141,7 +141,7 @@ def main():
     model_path = "jffacevedo/pxla_trained_model"
     pipe = StableDiffusionPipeline.from_pretrained(
         model_path, 
-        torch_dtype=torch.bfloat16
+        dtype=torch.bfloat16
     )
     pipe.to(device)
     prompt = ["A naruto with green eyes and red legs."]

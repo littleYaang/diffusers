@@ -1,5 +1,4 @@
 import gc
-import unittest
 
 import numpy as np
 import pytest
@@ -7,7 +6,8 @@ import torch
 
 from diffusers import FluxPipeline, FluxPriorReduxPipeline
 from diffusers.utils import load_image
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
     Expectations,
     backend_empty_cache,
     numpy_cosine_similarity_distance,
@@ -19,20 +19,17 @@ from diffusers.utils.testing_utils import (
 
 @slow
 @require_big_accelerator
-@pytest.mark.big_gpu_with_torch_cuda
-class FluxReduxSlowTests(unittest.TestCase):
+class TestFluxReduxSlow:
     pipeline_class = FluxPriorReduxPipeline
     repo_id = "black-forest-labs/FLUX.1-Redux-dev"
     base_pipeline_class = FluxPipeline
     base_repo_id = "black-forest-labs/FLUX.1-schnell"
 
-    def setUp(self):
-        super().setUp()
+    @pytest.fixture(autouse=True)
+    def cleanup(self):
         gc.collect()
         backend_empty_cache(torch_device)
-
-    def tearDown(self):
-        super().tearDown()
+        yield
         gc.collect()
         backend_empty_cache(torch_device)
 

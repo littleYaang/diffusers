@@ -1,6 +1,6 @@
 # InstructPix2Pix training example
 
-[InstructPix2Pix](https://arxiv.org/abs/2211.09800) is a method to fine-tune text-conditioned diffusion models such that they can follow an edit instruction for an input image. Models fine-tuned using this method take the following as inputs:
+[InstructPix2Pix](https://huggingface.co/papers/2211.09800) is a method to fine-tune text-conditioned diffusion models such that they can follow an edit instruction for an input image. Models fine-tuned using this method take the following as inputs:
 
 <p align="center">
     <img src="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/evaluation_diffusion_models/edit-instruction.png" alt="instructpix2pix-inputs" width=600/>
@@ -148,7 +148,7 @@ import torch
 from diffusers import StableDiffusionInstructPix2PixPipeline
 
 model_id = "your_model_id" # <- replace this
-pipe = StableDiffusionInstructPix2PixPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
+pipe = StableDiffusionInstructPix2PixPipeline.from_pretrained(model_id, dtype=torch.float16).to("cuda")
 generator = torch.Generator("cuda").manual_seed(0)
 
 url = "https://huggingface.co/datasets/sayakpaul/sample-datasets/resolve/main/test_pix2pix_4.png"

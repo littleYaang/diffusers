@@ -4,7 +4,7 @@ From the project [page](https://zhendong-wang.github.io/prompt-diffusion.github.
 
 "With a prompt consisting of a task-specific example pair of images and text guidance, and a new query image, Prompt Diffusion can comprehend the desired task and generate the corresponding output image on both seen (trained) and unseen (new) task types."
 
-For any usage questions, please refer to the [paper](https://arxiv.org/abs/2305.01115).
+For any usage questions, please refer to the [paper](https://huggingface.co/papers/2305.01115).
 
 Prepare models by converting them from the [checkpoint](https://huggingface.co/zhendongw/prompt-diffusion)
 
@@ -34,9 +34,9 @@ query = ImageOps.invert(load_image("https://github.com/Zhendong-Wang/Prompt-Diff
 
 # load prompt diffusion controlnet and prompt diffusion
 
-controlnet = PromptDiffusionControlNetModel.from_pretrained("iczaw/prompt-diffusion-diffusers", subfolder="controlnet", torch_dtype=torch.float16)
+controlnet = PromptDiffusionControlNetModel.from_pretrained("iczaw/prompt-diffusion-diffusers", subfolder="controlnet", dtype=torch.float16)
 model_id = "path-to-model"
-pipe = PromptDiffusionPipeline.from_pretrained("iczaw/prompt-diffusion-diffusers", subfolder="base", controlnet=controlnet, torch_dtype=torch.float16, variant="fp16")
+pipe = PromptDiffusionPipeline.from_pretrained("iczaw/prompt-diffusion-diffusers", subfolder="base", controlnet=controlnet, dtype=torch.float16, variant="fp16")
 
 # speed up diffusion process with faster scheduler and memory optimization
 pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)

@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -44,9 +44,9 @@ An attention processor is a class for applying different types of attention mech
 
 [[autodoc]] models.attention_processor.FusedCogVideoXAttnProcessor2_0
 
-## CrossFrameAttnProcessor
+## DreamLite
 
-[[autodoc]] pipelines.text_to_video_synthesis.pipeline_text_to_video_zero.CrossFrameAttnProcessor
+[[autodoc]] models.unets.unet_dreamlite.DreamLiteAttnProcessor2_0
 
 ## Custom Diffusion
 

@@ -1,4 +1,4 @@
-<!--Copyright 2024 Custom Diffusion authors The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 Custom Diffusion authors The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # 커스텀 Diffusion 학습 예제
 
-[커스텀 Diffusion](https://arxiv.org/abs/2212.04488)은 피사체의 이미지 몇 장(4~5장)만 주어지면 Stable Diffusion처럼 text-to-image 모델을 커스터마이징하는 방법입니다.
+[커스텀 Diffusion](https://huggingface.co/papers/2212.04488)은 피사체의 이미지 몇 장(4~5장)만 주어지면 Stable Diffusion처럼 text-to-image 모델을 커스터마이징하는 방법입니다.
 'train_custom_diffusion.py' 스크립트는 학습 과정을 구현하고 이를 Stable Diffusion에 맞게 조정하는 방법을 보여줍니다.
 
 이 교육 사례는 [Nupur Kumari](https://nupurkmr9.github.io/)가 제공하였습니다. (Custom Diffusion의 저자 중 한명).
@@ -221,7 +221,7 @@ accelerate launch train_custom_diffusion.py \
 import torch
 from diffusers import DiffusionPipeline
 
-pipe = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16).to("cuda")
+pipe = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", dtype=torch.float16).to("cuda")
 pipe.unet.load_attn_procs("path-to-save-model", weight_name="pytorch_custom_diffusion_weights.bin")
 pipe.load_textual_inversion("path-to-save-model", weight_name="<new1>.bin")
 
@@ -245,7 +245,7 @@ model_id = "sayakpaul/custom-diffusion-cat"
 card = RepoCard.load(model_id)
 base_model_id = card.data.to_dict()["base_model"]
 
-pipe = DiffusionPipeline.from_pretrained(base_model_id, torch_dtype=torch.float16).to("cuda")
+pipe = DiffusionPipeline.from_pretrained(base_model_id, dtype=torch.float16).to("cuda")
 pipe.unet.load_attn_procs(model_id, weight_name="pytorch_custom_diffusion_weights.bin")
 pipe.load_textual_inversion(model_id, weight_name="<new1>.bin")
 
@@ -269,7 +269,7 @@ model_id = "sayakpaul/custom-diffusion-cat-wooden-pot"
 card = RepoCard.load(model_id)
 base_model_id = card.data.to_dict()["base_model"]
 
-pipe = DiffusionPipeline.from_pretrained(base_model_id, torch_dtype=torch.float16).to("cuda")
+pipe = DiffusionPipeline.from_pretrained(base_model_id, dtype=torch.float16).to("cuda")
 pipe.unet.load_attn_procs(model_id, weight_name="pytorch_custom_diffusion_weights.bin")
 pipe.load_textual_inversion(model_id, weight_name="<new1>.bin")
 pipe.load_textual_inversion(model_id, weight_name="<new2>.bin")

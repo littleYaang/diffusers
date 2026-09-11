@@ -1,4 +1,4 @@
-<!-- Copyright 2024 The HuggingFace Team. All rights reserved.
+<!-- Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -36,7 +36,7 @@ Load a model in Diffusers format with [`~ModelMixin.from_pretrained`].
 ```python
 from diffusers import AutoencoderDC
 
-ae = AutoencoderDC.from_pretrained("mit-han-lab/dc-ae-f32c32-sana-1.0-diffusers", torch_dtype=torch.float32).to("cuda")
+ae = AutoencoderDC.from_pretrained("mit-han-lab/dc-ae-f32c32-sana-1.0-diffusers", dtype=torch.float32).to("cuda")  # or "mps", "xpu", "cpu"
 ```
 
 ## Load a model in Diffusers via `from_single_file`

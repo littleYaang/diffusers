@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -28,7 +28,7 @@ Lumina-Next has the following components:
 
 ---
 
-[Lumina-T2X: Transforming Text into Any Modality, Resolution, and Duration via Flow-based Large Diffusion Transformers](https://arxiv.org/abs/2405.05945) from Alpha-VLLM, OpenGVLab, Shanghai AI Laboratory.
+[Lumina-T2X: Transforming Text into Any Modality, Resolution, and Duration via Flow-based Large Diffusion Transformers](https://huggingface.co/papers/2405.05945) from Alpha-VLLM, OpenGVLab, Shanghai AI Laboratory.
 
 The abstract from the paper is:
 
@@ -45,11 +45,8 @@ Lumina-T2X has the following components:
 
 This pipeline was contributed by [PommesPeter](https://github.com/PommesPeter). The original codebase can be found [here](https://github.com/Alpha-VLLM/Lumina-T2X). The original weights can be found under [hf.co/Alpha-VLLM](https://huggingface.co/Alpha-VLLM).
 
-<Tip>
-
-Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reuse-a-pipeline) section to learn how to efficiently load the same components into multiple pipelines.
-
-</Tip>
+> [!TIP]
+> Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reusing-models-in-multiple-pipelines) section to learn how to efficiently load the same components into multiple pipelines.
 
 ### Inference (Text-to-Image)
 
@@ -62,8 +59,8 @@ from diffusers import LuminaPipeline
 import torch
 
 pipeline = LuminaPipeline.from_pretrained(
-	"Alpha-VLLM/Lumina-Next-SFT-diffusers", torch_dtype=torch.bfloat16
-).to("cuda")
+	"Alpha-VLLM/Lumina-Next-SFT-diffusers", dtype=torch.bfloat16
+).to("cuda")  # or "mps", "xpu", "cpu"
 ```
 
 Then change the memory layout of the pipelines `transformer` and `vae` components to `torch.channels-last`:
@@ -98,7 +95,7 @@ text_encoder_8bit = T5EncoderModel.from_pretrained(
     "Alpha-VLLM/Lumina-Next-SFT-diffusers",
     subfolder="text_encoder",
     quantization_config=quant_config,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 )
 
 quant_config = DiffusersBitsAndBytesConfig(load_in_8bit=True)
@@ -106,14 +103,14 @@ transformer_8bit = Transformer2DModel.from_pretrained(
     "Alpha-VLLM/Lumina-Next-SFT-diffusers",
     subfolder="transformer",
     quantization_config=quant_config,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 )
 
 pipeline = LuminaPipeline.from_pretrained(
     "Alpha-VLLM/Lumina-Next-SFT-diffusers",
     text_encoder=text_encoder_8bit,
     transformer=transformer_8bit,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     device_map="balanced",
 )
 

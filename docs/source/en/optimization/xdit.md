@@ -2,7 +2,7 @@
 
 [xDiT](https://github.com/xdit-project/xDiT) is an inference engine designed for the large scale parallel deployment of Diffusion Transformers (DiTs). xDiT provides a suite of efficient parallel approaches for Diffusion Models, as well as GPU kernel accelerations.
 
-There are four parallel methods supported in xDiT, including [Unified Sequence Parallelism](https://arxiv.org/abs/2405.07719), [PipeFusion](https://arxiv.org/abs/2405.14430), CFG parallelism and data parallelism. The four parallel methods in xDiT can be configured in a hybrid manner, optimizing communication patterns to best suit the underlying network hardware.
+There are four parallel methods supported in xDiT, including [Unified Sequence Parallelism](https://huggingface.co/papers/2405.07719), [PipeFusion](https://huggingface.co/papers/2405.14430), CFG parallelism and data parallelism. The four parallel methods in xDiT can be configured in a hybrid manner, optimizing communication patterns to best suit the underlying network hardware.
 
 Optimization orthogonal to parallelization focuses on accelerating single GPU performance. In addition to utilizing well-known Attention optimization libraries, we leverage compilation acceleration technologies such as torch.compile and onediff.
 
@@ -37,7 +37,7 @@ Here's an example of using xDiT to accelerate inference of a Diffusers model.
      local_rank = get_world_group().local_rank
      pipe = StableDiffusion3Pipeline.from_pretrained(
          pretrained_model_name_or_path=engine_config.model_config.model,
-         torch_dtype=torch.float16,
+         dtype=torch.float16,
      ).to(f"cuda:{local_rank}")
     
 # do anything you want with pipeline here
@@ -50,7 +50,7 @@ Here's an example of using xDiT to accelerate inference of a Diffusers model.
          prompt=input_config.prompt,
          num_inference_steps=input_config.num_inference_steps,
          output_type=input_config.output_type,
-         generator=torch.Generator(device="cuda").manual_seed(input_config.seed),
+         generator=torch.Generator(device="cuda").manual_seed(input_config.seed),  # or "mps", "xpu", "cpu"
      )
 
 +    if input_config.output_type == "pil":
@@ -116,6 +116,6 @@ More detailed performance metric can be found on our [github page](https://githu
 
 [xDiT-project](https://github.com/xdit-project/xDiT)
 
-[USP: A Unified Sequence Parallelism Approach for Long Context Generative AI](https://arxiv.org/abs/2405.07719)
+[USP: A Unified Sequence Parallelism Approach for Long Context Generative AI](https://huggingface.co/papers/2405.07719)
 
-[PipeFusion: Displaced Patch Pipeline Parallelism for Inference of Diffusion Transformer Models](https://arxiv.org/abs/2405.14430)
+[PipeFusion: Displaced Patch Pipeline Parallelism for Inference of Diffusion Transformer Models](https://huggingface.co/papers/2405.14430)
